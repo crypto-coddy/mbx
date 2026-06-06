@@ -1,0 +1,135 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@config 'tailwind.config.js';
+
+/* —— Brand sidebar (dark slate + gold accent) —— */
+.fi-sidebar {
+    @apply !from-slate-900 !via-slate-800 !to-slate-950 !ring-0 !shadow-xl;
+    background-image: linear-gradient(180deg, #0f172a 0%, #1e293b 55%, #020617 100%) !important;
+}
+
+.fi-sidebar-header {
+    @apply border-b border-white/10 bg-transparent px-4 py-5;
+}
+
+.fi-sidebar-nav {
+    @apply gap-y-1 px-3 py-4;
+}
+
+/* Force readable text on dark sidebar while panel uses light theme */
+.fi-sidebar .fi-sidebar-group-label {
+    @apply text-[10px] font-bold uppercase tracking-widest !text-slate-400;
+}
+
+.fi-sidebar .fi-sidebar-group-icon {
+    @apply !text-slate-400;
+}
+
+.fi-sidebar .fi-sidebar-group-collapse-button {
+    @apply !text-slate-400;
+}
+
+.fi-sidebar .fi-sidebar-item-label {
+    @apply !text-slate-200;
+}
+
+.fi-sidebar .fi-sidebar-item-icon {
+    @apply !text-slate-300;
+}
+
+.fi-sidebar .fi-sidebar-item-button {
+    @apply transition-all duration-200;
+}
+
+.fi-sidebar .fi-sidebar-item-button:hover {
+    @apply !bg-white/10;
+}
+
+.fi-sidebar .fi-sidebar-item-button:hover .fi-sidebar-item-label {
+    @apply !text-white;
+}
+
+.fi-sidebar .fi-sidebar-item-button:hover .fi-sidebar-item-icon {
+    @apply !text-white;
+}
+
+.fi-sidebar .fi-sidebar-item.fi-active .fi-sidebar-item-button {
+    @apply !bg-amber-500/20 !ring-1 !ring-amber-400/30;
+}
+
+.fi-sidebar .fi-sidebar-item.fi-active .fi-sidebar-item-label {
+    @apply !text-amber-300;
+}
+
+.fi-sidebar .fi-sidebar-item.fi-active .fi-sidebar-item-icon {
+    @apply !text-amber-400;
+}
+
+/* —— Top bar —— */
+.fi-topbar {
+    @apply border-b border-slate-200/80 bg-white/80 backdrop-blur-md shadow-sm;
+}
+
+/* —— Main canvas —— */
+.fi-main {
+    @apply bg-slate-50/90;
+}
+
+.fi-page {
+    @apply gap-y-6;
+}
+
+.fi-header-heading {
+    @apply text-2xl font-bold tracking-tight text-slate-900;
+}
+
+.fi-header-subheading {
+    @apply text-slate-500;
+}
+
+/* —— Dashboard stat cards —— */
+.fi-wi-stats-overview-stat {
+    @apply overflow-hidden rounded-2xl border-0 bg-white shadow-md ring-1 ring-slate-200/70 transition hover:shadow-lg hover:ring-amber-200/60;
+}
+
+.fi-wi-stats-overview-stat-chart {
+    @apply opacity-80;
+}
+
+.fi-wi-stats-overview-stat-value {
+    @apply text-3xl font-extrabold tracking-tight text-slate-900;
+}
+
+.fi-wi-stats-overview-stat-label {
+    @apply text-sm font-semibold text-slate-600;
+}
+
+/* —— Table widgets —— */
+.fi-wi-table {
+    @apply overflow-hidden rounded-2xl border-0 bg-white shadow-md ring-1 ring-slate-200/70;
+}
+
+.fi-ta-header-heading {
+    @apply text-lg font-bold text-slate-800;
+}
+
+.fi-ta-header-description {
+    @apply text-slate-500;
+}
+
+.fi-ta-table {
+    @apply divide-slate-100;
+}
+
+.fi-ta-row:hover {
+    @apply bg-amber-50/40;
+}
+
+/* —— Login page —— */
+.fi-simple-layout {
+    @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950;
+}
+
+.fi-simple-main {
+    @apply rounded-2xl shadow-2xl ring-1 ring-white/10;
+}

@@ -5,8 +5,10 @@ namespace App\Providers;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -22,9 +24,16 @@ class AppServiceProvider extends ServiceProvider
 
             $basePath = parse_url($url, PHP_URL_PATH);
             if ($basePath && $basePath !== '/') {
+                $prefix = trim($basePath, '/');
+
                 config([
                     'livewire.asset_url' => rtrim($url, '/').'/livewire/livewire.js',
                 ]);
+
+                Livewire::setUpdateRoute(function ($handle) use ($prefix) {
+                    return Route::post("{$prefix}/livewire/update", $handle)
+                        ->middleware('web');
+                });
             }
         }
 

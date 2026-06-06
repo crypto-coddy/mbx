@@ -19,6 +19,13 @@ class AppServiceProvider extends ServiceProvider
     {
         if ($url = config('app.url')) {
             URL::forceRootUrl($url);
+
+            $basePath = parse_url($url, PHP_URL_PATH);
+            if ($basePath && $basePath !== '/') {
+                config([
+                    'livewire.asset_url' => rtrim($url, '/').'/livewire/livewire.js',
+                ]);
+            }
         }
 
         if ($this->app->environment('production', 'staging')) {

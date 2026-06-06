@@ -7,6 +7,7 @@ use App\Models\PriceHistory;
 use App\Models\UserProfile;
 use App\Models\UserProfileAssetChart;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class MarketChartService
 {
@@ -258,6 +259,18 @@ class MarketChartService
                 ]
             );
         }
+    }
+
+    /**
+     * @param  Collection<int, Asset>|iterable<int, Asset>  $assets
+     */
+    public function preloadRealChartsForProfile(?UserProfile $profile, Collection|iterable $assets): void
+    {
+        if (! $this->chartMode->isRealForProfile($profile)) {
+            return;
+        }
+
+        $this->realCharts->preloadLiveCharts($assets);
     }
 
     public function formatAssetForApi(Asset $asset, ?UserProfile $profile = null, ?array $profileTrends = null): array

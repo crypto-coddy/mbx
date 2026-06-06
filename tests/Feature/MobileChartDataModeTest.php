@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\ChartDataModeService;
 use App\Services\MarketChartService;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -155,5 +156,31 @@ class MobileChartDataModeTest extends TestCase
         $row = $this->priceRowForSymbol('XAU');
         $this->assertEquals('real', $row['chart_scope']);
         $this->assertEquals('2650.00000000', $row['current_price']);
+    }
+
+    public function test_real_mode_prices_endpoint_does_not_call_external_apis(): void
+    {
+        Http::fake();
+
+        TradeSetting::updateOrCreate(
+            ['key' => ChartDataModeService::SETTING_KEY],
+            ['value' => ChartDataModeService::MODE_REAL],
+        );
+
+        $this->testAsset([
+            'name' => 'Bitcoin',
+            'symbol' => 'BTC',
+            'display_name' => 'Bitcoin',
+            'live_price' => 97500,
+            'chart_trend' => 'up',
+            'price_change_24h' => 1.2,
+        ]);
+
+        $started = microtime(true);
+        $this->getJson('/api/v1/prices')->assertOk();
+        $elapsed = microtime(true) - $started;
+
+        Http::assertNothingSent();
+        $this->assertLessThan(3.0, $elapsed, 'Real-mode prices should respond without blocking HTTP calls.');
     }
 }

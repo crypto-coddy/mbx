@@ -5,6 +5,7 @@ use App\Http\Middleware\VerifiedKyc;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -16,6 +17,16 @@ $app = Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->redirectGuestsTo(function (Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return null;
+            }
+
+            $base = rtrim((string) parse_url((string) config('app.url'), PHP_URL_PATH), '/');
+
+            return ($base !== '' ? $base : '').'/admin/login';
+        });
+
         $middleware->append(SecurityHeaders::class);
 
         $middleware->alias([

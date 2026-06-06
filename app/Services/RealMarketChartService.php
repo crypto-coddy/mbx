@@ -12,14 +12,66 @@ class RealMarketChartService
 {
     private const MAX_CHART_POINTS = 48;
 
+    /** @var array<int, array<int, array{price: string, recorded_at: string, trend: string}>> */
+    private array $preloadedCharts = [];
+
+    /**
+     * @param  iterable<int, Asset>  $assets
+     */
+    public function preloadLiveCharts(iterable $assets, int $points = 40): void
+    {
+        $assetIds = collect($assets)->pluck('id')->filter()->unique()->values()->all();
+        if ($assetIds === []) {
+            return;
+        }
+
+        $rowsByAsset = PriceHistory::query()
+            ->whereIn('asset_id', $assetIds)
+            ->where('source', 'live_api')
+            ->where('interval', '1m')
+            ->orderByDesc('recorded_at')
+            ->get()
+            ->groupBy('asset_id');
+
+        foreach ($assets as $asset) {
+            $rows = $rowsByAsset->get($asset->id, collect())
+                ->sortBy('recorded_at')
+                ->take(-$points)
+                ->values();
+
+            if ($rows->count() < 10) {
+                continue;
+            }
+
+            $series = $rows
+                ->map(fn (PriceHistory $row) => [
+                    'price' => (string) ($row->close ?? $row->price),
+                    'recorded_at' => $row->recorded_at?->toIso8601String() ?? now()->toIso8601String(),
+                    'trend' => 'up',
+                ])
+                ->all();
+
+            $this->preloadedCharts[$asset->id] = $this->applyTrends($series);
+        }
+    }
+
     /**
      * @return array<int, array{price: string, recorded_at: string, trend: string}>
      */
     public function getChartForAsset(Asset $asset, int $points = 40): array
     {
+        if (isset($this->preloadedCharts[$asset->id])) {
+            return $this->preloadedCharts[$asset->id];
+        }
+
         $stored = $this->loadLiveChart($asset, $points);
         if (count($stored) >= 10) {
             return $this->applyTrends($stored);
+        }
+
+        // Skip blocking outbound HTTP during web requests (shared hosts often timeout).
+        if (! app()->runningInConsole()) {
+            return $this->buildFallbackSeries($asset, $points);
         }
 
         $external = $this->fetchExternalSeries($asset, $points);

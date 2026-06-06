@@ -69,6 +69,8 @@ class MarketCatalogService
             $assets = Asset::orderBy('sort_order')->get();
         }
 
+        $this->charts->preloadRealChartsForProfile($profile, $assets);
+
         return $assets->map(function (Asset $asset) use ($profile, $profileTrends, $favoriteIds) {
             $payload = $this->charts->formatAssetForApi($asset, $profile, $profileTrends);
             $payload['category'] = $asset->category ?? 'commodities';
@@ -141,7 +143,7 @@ class MarketCatalogService
     /** Skip catalog upsert in tests when assets were seeded manually. */
     protected function maybeEnsureDefaultCatalog(): void
     {
-        if (app()->environment('testing') && Asset::count() > 0) {
+        if (Asset::count() > 0) {
             return;
         }
 

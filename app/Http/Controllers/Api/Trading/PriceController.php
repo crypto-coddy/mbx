@@ -10,6 +10,7 @@ use App\Services\MarketCatalogService;
 use App\Services\MarketChartService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class PriceController extends ApiController
@@ -31,12 +32,24 @@ class PriceController extends ApiController
         $user = $this->resolveUser($request);
         $profile = $user?->profile;
 
-        $assets = $this->catalog->listForUser(
+        $category = $data['category'] ?? null;
+        $search = $data['search'] ?? null;
+        $favoritesOnly = (bool) ($data['favorites_only'] ?? false);
+        $chartMode = $this->chartMode->modeForProfile($profile);
+
+        $cacheKey = 'api.prices.'.($user?->id ?? 'guest').'.'.md5(json_encode([
+            'category' => $category,
+            'search' => $search,
+            'favorites_only' => $favoritesOnly,
+            'chart_mode' => $chartMode,
+        ]));
+
+        $assets = Cache::remember($cacheKey, now()->addSeconds(15), fn () => $this->catalog->listForUser(
             $user,
-            $data['category'] ?? null,
-            $data['search'] ?? null,
-            (bool) ($data['favorites_only'] ?? false),
-        )->values();
+            $category,
+            $search,
+            $favoritesOnly,
+        )->values());
 
         // `data` is a flat array so older mobile clients (FlatList) keep working.
         return response()->json([
@@ -44,8 +57,7 @@ class PriceController extends ApiController
             'data' => $assets,
             'meta' => [
                 'categories' => MarketCatalogService::CATEGORIES,
-                'chart_data_mode' => $this->chartMode->modeForProfile($profile),
-                'account_label' => $this->chartMode->isRealForProfile($profile) ? 'Real' : 'Custom',
+                'chart_data_mode' => $chartMode,
             ],
             'message' => 'OK',
         ]);

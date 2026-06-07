@@ -6,12 +6,11 @@ use App\Events\PriceUpdated;
 use App\Models\Asset;
 use App\Models\PriceHistory;
 use App\Services\ChartDataModeService;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class FetchLivePricesJob implements ShouldQueue
+class FetchLivePricesJob
 {
     use Queueable;
 

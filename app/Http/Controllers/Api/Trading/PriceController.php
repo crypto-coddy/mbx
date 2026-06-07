@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Trading;
 use App\Http\Controllers\Api\ApiController;
 use App\Models\Asset;
 use App\Models\PriceHistory;
+use App\Models\UserProfile;
 use App\Services\ChartDataModeService;
 use App\Services\MarketCatalogService;
 use App\Services\MarketChartService;
@@ -37,14 +38,18 @@ class PriceController extends ApiController
         $favoritesOnly = (bool) ($data['favorites_only'] ?? false);
         $chartMode = $this->chartMode->modeForProfile($profile);
 
-        $cacheKey = 'api.prices.'.($user?->id ?? 'guest').'.'.md5(json_encode([
+        $this->maybeAdvanceStaleQuotes($profile, $chartMode);
+
+        // Short bucket so quotes refresh frequently for live charts.
+        $timeBucket = (int) floor(time() / 2);
+        $cacheKey = 'api.prices.'.($user?->id ?? 'guest').'.'.$timeBucket.'.'.md5(json_encode([
             'category' => $category,
             'search' => $search,
             'favorites_only' => $favoritesOnly,
             'chart_mode' => $chartMode,
         ]));
 
-        $assets = Cache::remember($cacheKey, now()->addSeconds(15), fn () => $this->catalog->listForUser(
+        $assets = Cache::remember($cacheKey, now()->addSeconds(2), fn () => $this->catalog->listForUser(
             $user,
             $category,
             $search,
@@ -91,6 +96,19 @@ class PriceController extends ApiController
             'asset' => $this->charts->formatAssetForApi($asset, $profile, $profileTrends),
             'history' => $history,
         ]);
+    }
+
+    protected function maybeAdvanceStaleQuotes(?UserProfile $profile, string $chartMode): void
+    {
+        if (app()->environment('testing') || $chartMode !== ChartDataModeService::MODE_CUSTOM) {
+            return;
+        }
+
+        if (! Cache::add('api.prices.advance_lock', 1, 5)) {
+            return;
+        }
+
+        $this->charts->tickAllCustomCharts();
     }
 
     protected function resolveUser(Request $request): ?\App\Models\User

@@ -12,7 +12,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::job(new FetchLivePricesJob)->everyThirtySeconds();
-Schedule::job(new TickCustomChartsJob)->everyMinute();
+Schedule::job(new FetchLivePricesJob)->everyThirtySeconds()->withoutOverlapping(25);
+Schedule::job(new TickCustomChartsJob)->everyMinute()->withoutOverlapping(50);
 Schedule::job(new ProcessReferralCommissionsJob)->everyMinute();
 Schedule::job(new CleanExpiredOtpsJob)->hourly();

@@ -38,10 +38,11 @@ class PriceController extends ApiController
         $favoritesOnly = (bool) ($data['favorites_only'] ?? false);
         $chartMode = $this->chartMode->modeForProfile($profile);
 
+        // Throttled custom-mode ticks so mobile polls see movement without overshooting.
         $this->maybeAdvanceStaleQuotes($profile, $chartMode);
 
-        // Short bucket so quotes refresh frequently for live charts.
-        $timeBucket = (int) floor(time() / 2);
+        // Align cache with mobile poll interval so quotes advance smoothly, not in 2s jumps.
+        $timeBucket = (int) floor(time() / 3);
         $cacheKey = 'api.prices.'.($user?->id ?? 'guest').'.'.$timeBucket.'.'.md5(json_encode([
             'category' => $category,
             'search' => $search,
@@ -49,7 +50,7 @@ class PriceController extends ApiController
             'chart_mode' => $chartMode,
         ]));
 
-        $assets = Cache::remember($cacheKey, now()->addSeconds(2), fn () => $this->catalog->listForUser(
+        $assets = Cache::remember($cacheKey, now()->addSeconds(3), fn () => $this->catalog->listForUser(
             $user,
             $category,
             $search,
@@ -104,7 +105,7 @@ class PriceController extends ApiController
             return;
         }
 
-        if (! Cache::add('api.prices.advance_lock', 1, 5)) {
+        if (! Cache::add('api.prices.advance_lock', 1, 20)) {
             return;
         }
 

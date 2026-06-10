@@ -46,6 +46,10 @@ class RealMarketChartService
             $series = $rows
                 ->map(fn (PriceHistory $row) => [
                     'price' => (string) ($row->close ?? $row->price),
+                    'open' => (string) ($row->open ?? $row->close ?? $row->price),
+                    'high' => (string) ($row->high ?? $row->close ?? $row->price),
+                    'low' => (string) ($row->low ?? $row->close ?? $row->price),
+                    'close' => (string) ($row->close ?? $row->price),
                     'recorded_at' => $row->recorded_at?->toIso8601String() ?? now()->toIso8601String(),
                     'trend' => 'up',
                 ])
@@ -137,6 +141,10 @@ class RealMarketChartService
             ->values()
             ->map(fn (PriceHistory $row) => [
                 'price' => (string) ($row->close ?? $row->price),
+                'open' => (string) ($row->open ?? $row->close ?? $row->price),
+                'high' => (string) ($row->high ?? $row->close ?? $row->price),
+                'low' => (string) ($row->low ?? $row->close ?? $row->price),
+                'close' => (string) ($row->close ?? $row->price),
                 'recorded_at' => $row->recorded_at?->toIso8601String() ?? now()->toIso8601String(),
                 'trend' => 'up',
             ])
@@ -156,7 +164,10 @@ class RealMarketChartService
             PriceHistory::create([
                 'asset_id' => $asset->id,
                 'price' => $point['price'],
-                'close' => $point['price'],
+                'open' => $point['open'] ?? $point['price'],
+                'high' => $point['high'] ?? $point['price'],
+                'low' => $point['low'] ?? $point['price'],
+                'close' => $point['close'] ?? $point['price'],
                 'source' => 'live_api',
                 'interval' => '1m',
                 'segment_trend' => $point['trend'],
@@ -274,6 +285,9 @@ class RealMarketChartService
 
             $series = [];
             foreach ($response->json() as $candle) {
+                $open = $candle[1] ?? null;
+                $high = $candle[2] ?? null;
+                $low = $candle[3] ?? null;
                 $close = $candle[4] ?? null;
                 $time = $candle[0] ?? null;
                 if ($close === null || $time === null) {
@@ -281,6 +295,10 @@ class RealMarketChartService
                 }
                 $series[] = [
                     'price' => number_format((float) $close, 8, '.', ''),
+                    'open' => number_format((float) ($open ?? $close), 8, '.', ''),
+                    'high' => number_format((float) ($high ?? $close), 8, '.', ''),
+                    'low' => number_format((float) ($low ?? $close), 8, '.', ''),
+                    'close' => number_format((float) $close, 8, '.', ''),
                     'recorded_at' => Carbon::createFromTimestampMs((int) $time)->toIso8601String(),
                     'trend' => 'up',
                 ];

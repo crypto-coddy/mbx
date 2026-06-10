@@ -311,6 +311,7 @@ class MarketChartService
             'trading_enabled' => (bool) $asset->trading_enabled,
             'min_trade_amount' => (string) $asset->min_trade_amount,
             'chart' => $chart,
+            'chart_candles' => $this->seriesToCandles($chart, 32),
             'chart_summary' => $summary,
             'chart_scope' => 'real',
         ], $this->quoteFields($price, $chart, $asset));
@@ -359,6 +360,7 @@ class MarketChartService
             'trading_enabled' => (bool) $asset->trading_enabled,
             'min_trade_amount' => (string) $asset->min_trade_amount,
             'chart' => $chart,
+            'chart_candles' => $this->seriesToCandles($chart, 32),
             'chart_summary' => $summary,
             'chart_scope' => $hasUserOverride ? 'user' : 'global',
         ], $this->quoteFields($price, $chart, $asset));
@@ -398,10 +400,14 @@ class MarketChartService
         $low = count($prices) ? min($prices) : $mid * 0.998;
         $high = count($prices) ? max($prices) : $mid * 1.002;
 
+        // Session range must include the live quote (chart min/max can lag after a fresh tick).
+        $low = min($low, $bid, $ask);
+        $high = max($high, $bid, $ask);
+
         // Widen L/H slightly when chart is flat (demo data)
         if ($high - $low < $spreadPoints) {
-            $low = $mid - ($spreadPoints * 2);
-            $high = $mid + ($spreadPoints * 2);
+            $low = min($low, $mid - ($spreadPoints * 2));
+            $high = max($high, $mid + ($spreadPoints * 2));
         }
 
         $displaySpread = match ($symbol) {
@@ -583,11 +589,19 @@ class MarketChartService
     private function normalizeChartPoints(array $series, string $fallbackTrend): array
     {
         return array_values(array_map(function (array $point) use ($fallbackTrend) {
-            return [
+            $normalized = [
                 'price' => (string) $point['price'],
                 'recorded_at' => $point['recorded_at'] ?? now()->toIso8601String(),
                 'trend' => in_array($point['trend'] ?? null, ['up', 'down'], true) ? $point['trend'] : $fallbackTrend,
             ];
+
+            foreach (['open', 'high', 'low', 'close'] as $key) {
+                if (isset($point[$key])) {
+                    $normalized[$key] = (string) $point[$key];
+                }
+            }
+
+            return $normalized;
         }, $series));
     }
 
@@ -595,6 +609,112 @@ class MarketChartService
      * @param  array<int, array{price: string, recorded_at: string, trend: string}>  $series
      * @return array<int, array{price: string, recorded_at: string, trend: string}>
      */
+    /**
+     * @param  array<int, array{price: string, recorded_at?: string, trend?: string}>  $series
+     * @return array<int, array{open: string, high: string, low: string, close: string, price: string, recorded_at: string}>
+     */
+    public function seriesToCandles(array $series, int $maxCandles = 32): array
+    {
+        $normalized = $this->normalizeChartPoints($series, 'up');
+        if (count($normalized) < 2) {
+            return [];
+        }
+
+        $hasOhlc = collect($normalized)->contains(
+            fn (array $point) => isset($point['open'], $point['high'], $point['low'], $point['close'])
+        );
+
+        if ($hasOhlc) {
+            return $this->aggregateOhlcPoints($normalized, $maxCandles);
+        }
+
+        $targetCount = min($maxCandles, max(12, (int) floor(count($normalized) / 2)));
+        $chunkSize = max(1, (int) ceil(count($normalized) / $targetCount));
+        $candles = [];
+
+        for ($i = 0; $i < count($normalized); $i += $chunkSize) {
+            $chunk = array_slice($normalized, $i, $chunkSize);
+            $prices = array_map(fn (array $point) => (float) $point['price'], $chunk);
+            $open = $prices[0];
+            $close = $prices[count($prices) - 1];
+            $chunkHigh = max($prices);
+            $chunkLow = min($prices);
+
+            $mid = ($open + $close) / 2;
+            $body = abs($close - $open);
+            $range = max($chunkHigh - $chunkLow, $body);
+            $volatility = max($range * 0.65, $mid * 0.00035, 0.0001);
+
+            $seed = (int) floor($i / $chunkSize) + 1;
+            $wickUp = $volatility * (0.2 + abs(sin($seed * 2.17)) * 0.5);
+            $wickDown = $volatility * (0.2 + abs(cos($seed * 1.73)) * 0.5);
+
+            $high = max($chunkHigh, $open, $close) + $wickUp;
+            $low = min($chunkLow, $open, $close) - $wickDown;
+
+            if ($seed % 5 === 0) {
+                $high = max($open, $close) + $volatility * 0.12;
+                $low = min($open, $close) - $volatility * 0.85;
+            } elseif ($seed % 7 === 0) {
+                $high = max($open, $close) + $volatility * 0.85;
+                $low = min($open, $close) - $volatility * 0.12;
+            }
+
+            $last = $chunk[array_key_last($chunk)];
+            $candles[] = [
+                'open' => number_format($open, 8, '.', ''),
+                'high' => number_format($high, 8, '.', ''),
+                'low' => number_format(max(0.00000001, $low), 8, '.', ''),
+                'close' => number_format($close, 8, '.', ''),
+                'price' => number_format($close, 8, '.', ''),
+                'recorded_at' => $last['recorded_at'],
+            ];
+        }
+
+        return array_values(array_slice($candles, -$maxCandles));
+    }
+
+    /**
+     * @param  array<int, array{price: string, recorded_at: string, trend: string, open?: string, high?: string, low?: string, close?: string}>  $points
+     * @return array<int, array{open: string, high: string, low: string, close: string, price: string, recorded_at: string}>
+     */
+    private function aggregateOhlcPoints(array $points, int $maxCandles): array
+    {
+        if (count($points) <= $maxCandles) {
+            return array_values(array_map(fn (array $point) => [
+                'open' => (string) ($point['open'] ?? $point['price']),
+                'high' => (string) ($point['high'] ?? $point['price']),
+                'low' => (string) ($point['low'] ?? $point['price']),
+                'close' => (string) ($point['close'] ?? $point['price']),
+                'price' => (string) ($point['close'] ?? $point['price']),
+                'recorded_at' => $point['recorded_at'],
+            ], $points));
+        }
+
+        $chunkSize = max(1, (int) ceil(count($points) / $maxCandles));
+        $candles = [];
+
+        for ($i = 0; $i < count($points); $i += $chunkSize) {
+            $chunk = array_slice($points, $i, $chunkSize);
+            $opens = array_map(fn (array $point) => (float) ($point['open'] ?? $point['price']), $chunk);
+            $highs = array_map(fn (array $point) => (float) ($point['high'] ?? $point['price']), $chunk);
+            $lows = array_map(fn (array $point) => (float) ($point['low'] ?? $point['price']), $chunk);
+            $closes = array_map(fn (array $point) => (float) ($point['close'] ?? $point['price']), $chunk);
+            $last = $chunk[array_key_last($chunk)];
+
+            $candles[] = [
+                'open' => number_format($opens[0], 8, '.', ''),
+                'high' => number_format(max($highs), 8, '.', ''),
+                'low' => number_format(min($lows), 8, '.', ''),
+                'close' => number_format($closes[count($closes) - 1], 8, '.', ''),
+                'price' => number_format($closes[count($closes) - 1], 8, '.', ''),
+                'recorded_at' => $last['recorded_at'],
+            ];
+        }
+
+        return array_values(array_slice($candles, -$maxCandles));
+    }
+
     private function trimChart(array $series): array
     {
         if (count($series) <= self::MAX_CHART_POINTS) {

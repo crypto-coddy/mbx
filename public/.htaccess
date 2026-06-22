@@ -3,12 +3,11 @@
         Options -MultiViews -Indexes
     </IfModule>
 
-    DirectoryIndex index.php
-
     RewriteEngine On
 
-    # Directory URLs (e.g. /quantx/) skip the !-d rewrite below on LiteSpeed.
-    # Redirect at the web-server layer instead of routing through Laravel.
+    # /quantx/ is a real directory on LiteSpeed — the !-d rule below never fires.
+    # Redirect the directory root at the web-server layer (do not use DirectoryIndex).
+    RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^$ admin/login [R=302,L]
 
     # Handle Authorization Header

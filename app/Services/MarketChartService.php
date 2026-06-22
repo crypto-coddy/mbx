@@ -274,6 +274,8 @@ class MarketChartService
 
         if ($this->chartVersion->isV2ForProfile($profile)) {
             $this->twelveData->warmLiveData();
+            // List endpoint: batch quotes only — time_series is cached or quote-fallback.
+            $this->twelveData->setAllowSeriesFetch(false);
 
             return;
         }

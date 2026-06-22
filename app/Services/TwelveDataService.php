@@ -12,10 +12,16 @@ class TwelveDataService
 {
     public const CACHE_TTL_SECONDS = 60;
 
+    public const SERIES_CACHE_TTL_SECONDS = 300;
+
     public const QUOTE_CACHE_KEY = 'twelve_data:quotes:v2';
+
+    public const RATE_LIMIT_CACHE_KEY = 'twelve_data:rate_limited_until';
 
     /** @var array<string, array<string, mixed>>|null */
     protected ?array $requestLiveData = null;
+
+    protected bool $allowSeriesFetch = true;
 
     /** @var array<string, string> Internal symbol → Twelve Data symbol */
     public const SYMBOL_MAP = [
@@ -71,26 +77,54 @@ class TwelveDataService
             return $cached;
         }
 
+        if ($this->isRateLimited() || ! $this->allowSeriesFetch) {
+            return is_array($cached) ? $cached : [
+                'status' => 'error',
+                'message' => 'Preview candles unavailable (cached only).',
+                'values' => [],
+            ];
+        }
+
         $payload = $this->fetchTimeSeries($internalSymbol, 30);
 
         if (($payload['status'] ?? 'error') === 'ok') {
-            Cache::put($cacheKey, $payload, self::CACHE_TTL_SECONDS);
+            Cache::put($cacheKey, $payload, self::SERIES_CACHE_TTL_SECONDS);
 
             return $payload;
         }
 
-        // Do not cache rate-limit errors for the full TTL.
-        if (! ($payload['rate_limited'] ?? false)) {
-            Cache::put($cacheKey, $payload, 15);
+        if ($payload['rate_limited'] ?? false) {
+            return is_array($cached) ? $cached : $payload;
         }
 
+        Cache::put($cacheKey, $payload, 15);
+
         return $payload;
+    }
+
+    public function setAllowSeriesFetch(bool $allow): self
+    {
+        $this->allowSeriesFetch = $allow;
+
+        return $this;
+    }
+
+    public function isRateLimited(): bool
+    {
+        return Cache::has(self::RATE_LIMIT_CACHE_KEY);
+    }
+
+    protected function markRateLimited(int $seconds = 60): void
+    {
+        Cache::put(self::RATE_LIMIT_CACHE_KEY, true, $seconds);
     }
 
     public function clearCaches(): void
     {
         Cache::forget(self::QUOTE_CACHE_KEY);
+        Cache::forget(self::RATE_LIMIT_CACHE_KEY);
         $this->requestLiveData = null;
+        $this->allowSeriesFetch = true;
 
         foreach (array_keys(self::SYMBOL_MAP) as $symbol) {
             Cache::forget('twelve_data:series:'.Str::slug($symbol).':30');
@@ -402,6 +436,10 @@ class TwelveDataService
 
         foreach ($chunks as $index => $chunk) {
             if ($index > 0) {
+                if ($this->isRateLimited()) {
+                    break;
+                }
+
                 sleep(8);
             }
 
@@ -465,7 +503,15 @@ class TwelveDataService
             ];
         }
 
-        $response = Http::timeout(20)
+        if ($this->isRateLimited()) {
+            return [
+                'status' => 'error',
+                'message' => 'Twelve Data rate limit cooldown active.',
+                'rate_limited' => true,
+            ];
+        }
+
+        $response = Http::timeout(5)
             ->acceptJson()
             ->get('https://api.twelvedata.com/'.$endpoint, array_merge($query, [
                 'apikey' => $apiKey,
@@ -478,6 +524,8 @@ class TwelveDataService
         ];
 
         if (($payload['code'] ?? null) === 429 || str_contains(strtolower((string) ($payload['message'] ?? '')), 'run out of api credits')) {
+            $this->markRateLimited();
+
             return [
                 'status' => 'error',
                 'message' => 'Twelve Data rate limit (8/min on Basic). Wait 1 minute or upgrade plan.',

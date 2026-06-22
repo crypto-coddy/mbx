@@ -44,6 +44,9 @@ class AssetsLive extends Page implements HasTable
 
     public string $previewSymbol = 'XAU';
 
+    /** Auto-refresh quotes + preview chart on this admin page only (not mobile). */
+    public bool $tradeChartLive = true;
+
     public static function canAccess(): bool
     {
         return static::canAdmin('view_markets');
@@ -68,8 +71,35 @@ class AssetsLive extends Page implements HasTable
 
     public function pollLiveData(TwelveDataService $twelveData): void
     {
+        if (! $this->tradeChartLive) {
+            return;
+        }
+
         $this->refreshLiveData($twelveData);
         $this->refreshPreviewCandles($this->previewSymbol, $twelveData);
+    }
+
+    public function toggleTradeChartLive(): void
+    {
+        $this->tradeChartLive = ! $this->tradeChartLive;
+
+        if ($this->tradeChartLive) {
+            $this->pollLiveData(app(TwelveDataService::class));
+
+            Notification::make()
+                ->title('Trade chart live updates started')
+                ->body('Quotes and preview candles will refresh every '.TwelveDataService::CACHE_TTL_SECONDS.' seconds.')
+                ->success()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title('Trade chart live updates stopped')
+            ->body('Auto-refresh paused on this page. Use Refresh live data for a manual update.')
+            ->info()
+            ->send();
     }
 
     /**
@@ -236,6 +266,12 @@ class AssetsLive extends Page implements HasTable
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('toggleTradeChartLive')
+                ->label(fn () => $this->tradeChartLive ? 'Stop trade chart' : 'Start trade chart')
+                ->icon(fn () => $this->tradeChartLive ? 'heroicon-o-pause-circle' : 'heroicon-o-play-circle')
+                ->color(fn () => $this->tradeChartLive ? 'warning' : 'success')
+                ->visible(fn () => static::canAdmin('manage_markets'))
+                ->action(fn () => $this->toggleTradeChartLive()),
             Action::make('refreshLive')
                 ->label('Refresh live data')
                 ->icon('heroicon-o-arrow-path')

@@ -47,8 +47,8 @@ class PriceController extends ApiController
         // Throttled custom-mode ticks so mobile polls see movement without overshooting.
         $this->maybeAdvanceStaleQuotes($profile, $chartMode);
 
-        // Align cache with mobile poll interval so quotes advance smoothly, not in 2s jumps.
-        $timeBucket = (int) floor(time() / 3);
+        // Align cache with mobile poll interval; avoid hammering Twelve Data on every tick.
+        $timeBucket = (int) floor(time() / 15);
         $cacheKey = 'api.prices.'.($user?->id ?? 'guest').'.'.$timeBucket.'.'.md5(json_encode([
             'category' => $category,
             'search' => $search,
@@ -57,7 +57,7 @@ class PriceController extends ApiController
             'chart_version' => $chartVersion,
         ]));
 
-        $assets = Cache::remember($cacheKey, now()->addSeconds(3), fn () => $this->catalog->listForUser(
+        $assets = Cache::remember($cacheKey, now()->addSeconds(15), fn () => $this->catalog->listForUser(
             $user,
             $category,
             $search,

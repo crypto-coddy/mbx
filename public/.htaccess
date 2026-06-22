@@ -3,7 +3,13 @@
         Options -MultiViews -Indexes
     </IfModule>
 
+    DirectoryIndex index.php
+
     RewriteEngine On
+
+    # Directory URLs (e.g. /quantx/) must hit the front controller — the
+    # !-d rule below skips real folders, so handle the app root explicitly.
+    RewriteRule ^$ index.php [L]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

@@ -2,4 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/', '/admin/login')->name('admin');
+Route::get('/', function () {
+    return redirect('/admin/login');
+})->name('home');

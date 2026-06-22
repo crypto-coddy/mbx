@@ -55,7 +55,7 @@ class AssetsLivePageTest extends TestCase
             ->assertSee('Assets Live')
             ->assertSee('Twelve Data')
             ->assertSee('Trade chart (admin web only)')
-            ->assertSee('Stop trade chart')
+            ->assertSee('Start trade chart')
             ->assertSee('Mobile trade chart preview')
             ->assertSee('<svg', false);
     }

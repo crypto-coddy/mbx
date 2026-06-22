@@ -45,16 +45,16 @@ class AssetsLive extends Page implements HasTable
     public string $previewSymbol = 'XAU';
 
     /** Auto-refresh quotes + preview chart on this admin page only (not mobile). */
-    public bool $tradeChartLive = true;
+    public bool $tradeChartLive = false;
 
     public static function canAccess(): bool
     {
         return static::canAdmin('view_markets');
     }
 
-    public function mount(TwelveDataService $twelveData): void
+    public function mount(): void
     {
-        $this->pollLiveData($twelveData);
+        // Off by default — no Twelve Data calls until admin clicks Start or Refresh live data.
     }
 
     public function updatedPreviewSymbol(TwelveDataService $twelveData): void
@@ -271,7 +271,8 @@ class AssetsLive extends Page implements HasTable
                 ->icon('heroicon-o-arrow-path')
                 ->action(function (TwelveDataService $twelveData) {
                     $twelveData->clearCaches();
-                    $this->pollLiveData($twelveData);
+                    $this->refreshLiveData($twelveData, force: true);
+                    $this->refreshPreviewCandles($this->previewSymbol, $twelveData, force: true);
 
                     $notification = Notification::make()
                         ->title($this->rateLimitMessage ? 'Rate limit — try again in 1 minute' : 'Live market data refreshed');

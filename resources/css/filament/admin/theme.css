@@ -271,3 +271,169 @@
     color: rgb(156 163 175);
     border-top-color: rgb(31 41 55);
 }
+
+/* —— Assets Live page controls (Filament theme; survives prod CSS purge) —— */
+.assets-live-trade-chart-panel,
+.assets-live-info-panel {
+    margin-bottom: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(229 231 235);
+    background: #fff;
+    padding: 1rem 1.5rem;
+}
+
+.dark .assets-live-trade-chart-panel,
+.dark .assets-live-info-panel {
+    border-color: rgb(55 65 81);
+    background: rgb(17 24 39);
+}
+
+.assets-live-trade-chart-panel-inner,
+.assets-live-info-panel-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.assets-live-trade-chart-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.assets-live-trade-chart-title,
+.assets-live-info-title {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    color: rgb(17 24 39);
+}
+
+.dark .assets-live-trade-chart-title,
+.dark .assets-live-info-title {
+    color: rgb(248 250 252);
+}
+
+.assets-live-trade-chart-desc,
+.assets-live-info-desc {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: rgb(75 85 99);
+}
+
+.dark .assets-live-trade-chart-desc,
+.dark .assets-live-info-desc {
+    color: rgb(209 213 219);
+}
+
+.assets-live-trade-chart-actions {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.assets-live-status-badge {
+    display: inline-block;
+    border-radius: 9999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.assets-live-status-badge--live {
+    background: rgb(240 253 244);
+    color: rgb(21 128 61);
+}
+
+.dark .assets-live-status-badge--live {
+    background: rgb(5 46 22 / 0.4);
+    color: rgb(134 239 172);
+}
+
+.assets-live-status-badge--paused {
+    background: rgb(243 244 246);
+    color: rgb(75 85 99);
+}
+
+.dark .assets-live-status-badge--paused {
+    background: rgb(31 41 55);
+    color: rgb(209 213 219);
+}
+
+.assets-live-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    transition: background-color 0.15s ease;
+}
+
+.assets-live-toggle-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.assets-live-toggle-btn--start {
+    background: rgb(22 163 74);
+}
+
+.assets-live-toggle-btn--start:hover:not(:disabled) {
+    background: rgb(34 197 94);
+}
+
+.assets-live-toggle-btn--stop {
+    background: rgb(217 119 6);
+}
+
+.assets-live-toggle-btn--stop:hover:not(:disabled) {
+    background: rgb(245 158 11);
+}
+
+.assets-live-toggle-btn-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.assets-live-rate-limit {
+    margin-top: 0.5rem;
+    border-radius: 0.5rem;
+    background: rgb(255 251 235);
+    padding: 0.5rem 0.75rem;
+    color: rgb(180 83 9);
+}
+
+.dark .assets-live-rate-limit {
+    background: rgb(69 26 3 / 0.4);
+    color: rgb(252 211 77);
+}
+
+.assets-live-updated-badge {
+    display: inline-block;
+    border-radius: 9999px;
+    background: rgb(243 244 246);
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    color: rgb(55 65 81);
+}
+
+.dark .assets-live-updated-badge {
+    background: rgb(31 41 55);
+    color: rgb(229 231 235);
+}

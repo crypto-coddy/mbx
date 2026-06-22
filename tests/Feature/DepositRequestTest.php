@@ -34,6 +34,30 @@ class DepositRequestTest extends TestCase
         ]);
     }
 
+    public function test_user_can_submit_deposit_request_with_payment_screenshot(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $response = $this->post('/api/v1/deposits', [
+            'amount' => 500,
+            'payment_method' => 'upi',
+            'payment_reference' => 'UTR123456',
+            'payment_screenshot' => \Illuminate\Http\UploadedFile::fake()->image('payment-proof.jpg'),
+        ], [
+            'Accept' => 'application/json',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'pending');
+
+        $deposit = DepositRequest::firstOrFail();
+        $this->assertNotNull($deposit->payment_screenshot_path);
+        $this->assertNotNull($deposit->payment_screenshot_url);
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('public')->exists($deposit->payment_screenshot_path));
+    }
+
     public function test_deposit_instructions_are_available(): void
     {
         $user = User::factory()->create();

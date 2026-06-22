@@ -14,6 +14,7 @@ class ReferralCommission extends Model
     protected $fillable = [
         'beneficiary_user_id',
         'source_user_id',
+        'commission_source',
         'trade_id',
         'referral_level',
         'trade_amount',
@@ -48,5 +49,10 @@ class ReferralCommission extends Model
     public function trade(): BelongsTo
     {
         return $this->belongsTo(Trade::class);
+    }
+
+    public function isSignupBonus(): bool
+    {
+        return $this->commission_source === 'signup';
     }
 }

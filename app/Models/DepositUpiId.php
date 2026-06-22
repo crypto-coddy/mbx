@@ -12,6 +12,8 @@ class DepositUpiId extends Model
     protected $fillable = [
         'label',
         'upi_id',
+        'payee_name',
+        'show_qr_code',
         'is_active',
         'sort_order',
         'created_by',
@@ -22,6 +24,7 @@ class DepositUpiId extends Model
     {
         return [
             'is_active' => 'boolean',
+            'show_qr_code' => 'boolean',
         ];
     }
 

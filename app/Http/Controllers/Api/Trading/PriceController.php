@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\PriceHistory;
 use App\Models\UserProfile;
 use App\Services\ChartDataModeService;
+use App\Services\ChartDataVersionService;
 use App\Services\MarketCatalogService;
 use App\Services\MarketChartService;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +21,7 @@ class PriceController extends ApiController
         protected MarketChartService $charts,
         protected MarketCatalogService $catalog,
         protected ChartDataModeService $chartMode,
+        protected ChartDataVersionService $chartVersion,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -31,12 +33,16 @@ class PriceController extends ApiController
         ]);
 
         $user = $this->resolveUser($request);
+        if ($user) {
+            $user->load('profile');
+        }
         $profile = $user?->profile;
 
         $category = $data['category'] ?? null;
         $search = $data['search'] ?? null;
         $favoritesOnly = (bool) ($data['favorites_only'] ?? false);
         $chartMode = $this->chartMode->modeForProfile($profile);
+        $chartVersion = $this->chartVersion->versionForProfile($profile);
 
         // Throttled custom-mode ticks so mobile polls see movement without overshooting.
         $this->maybeAdvanceStaleQuotes($profile, $chartMode);
@@ -48,6 +54,7 @@ class PriceController extends ApiController
             'search' => $search,
             'favorites_only' => $favoritesOnly,
             'chart_mode' => $chartMode,
+            'chart_version' => $chartVersion,
         ]));
 
         $assets = Cache::remember($cacheKey, now()->addSeconds(3), fn () => $this->catalog->listForUser(
@@ -64,6 +71,7 @@ class PriceController extends ApiController
             'meta' => [
                 'categories' => MarketCatalogService::CATEGORIES,
                 'chart_data_mode' => $chartMode,
+                'chart_data_version' => $chartVersion,
             ],
             'message' => 'OK',
         ]);

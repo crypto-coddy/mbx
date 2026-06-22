@@ -167,7 +167,7 @@ class MobileChartDataModeTest extends TestCase
             ['value' => ChartDataModeService::MODE_REAL],
         );
 
-        $this->testAsset([
+        $asset = $this->testAsset([
             'name' => 'Bitcoin',
             'symbol' => 'BTC',
             'display_name' => 'Bitcoin',
@@ -175,6 +175,18 @@ class MobileChartDataModeTest extends TestCase
             'chart_trend' => 'up',
             'price_change_24h' => 1.2,
         ]);
+
+        $base = now()->subMinutes(20);
+        for ($i = 0; $i < 15; $i++) {
+            \App\Models\PriceHistory::create([
+                'asset_id' => $asset->id,
+                'price' => 97000 + ($i * 10),
+                'close' => 97000 + ($i * 10),
+                'source' => 'live_api',
+                'interval' => '1m',
+                'recorded_at' => $base->copy()->addMinutes($i),
+            ]);
+        }
 
         $started = microtime(true);
         $this->getJson('/api/v1/prices')->assertOk();

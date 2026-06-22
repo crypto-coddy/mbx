@@ -11,6 +11,7 @@ use App\Services\WalletService;
 use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class DepositController extends ApiController
 {
@@ -46,6 +47,7 @@ class DepositController extends ApiController
             'payment_method' => ['required', 'in:upi,bank_transfer'],
             'payment_reference' => ['nullable', 'string', 'max:120'],
             'note' => ['nullable', 'string', 'max:500'],
+            'payment_screenshot' => ['nullable', 'image', 'max:5120'],
         ]);
 
         $user = $request->user();
@@ -59,6 +61,15 @@ class DepositController extends ApiController
 
         $amountLabel = Money::formatInr($amount);
 
+        $screenshotPath = null;
+        $screenshotUrl = null;
+
+        if ($request->hasFile('payment_screenshot')) {
+            $stored = $request->file('payment_screenshot')->store('deposits/'.$user->id, 'public');
+            $screenshotPath = $stored;
+            $screenshotUrl = Storage::disk('public')->url($stored);
+        }
+
         $deposit = DepositRequest::create([
             'user_id' => $user->id,
             'amount' => $amount,
@@ -66,6 +77,8 @@ class DepositController extends ApiController
             'payment_method' => $data['payment_method'],
             'payment_reference' => $data['payment_reference'] ?? null,
             'note' => $data['note'] ?? null,
+            'payment_screenshot_path' => $screenshotPath,
+            'payment_screenshot_url' => $screenshotUrl,
             'status' => 'pending',
         ]);
 

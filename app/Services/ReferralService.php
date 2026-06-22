@@ -13,6 +13,62 @@ class ReferralService
         protected WalletService $walletService,
     ) {}
 
+    /**
+     * Credit flat signup bonuses up to 3 levels when a referred user registers.
+     * Example: John → Akash → Sital → Aman. When Aman joins, Sital/Akash/John get ₹50; level 4+ gets nothing.
+     */
+    public function processOnSignup(User $newUser): void
+    {
+        if (! $newUser->referred_by) {
+            return;
+        }
+
+        $sourceUser = $newUser->loadMissing('referrer');
+        $referrer = $sourceUser->referrer;
+        $level = 1;
+        $bonus = $this->settings->get('referral_signup_bonus', '50');
+
+        while ($referrer && $level <= 3) {
+            if (bccomp($bonus, '0', 8) <= 0) {
+                break;
+            }
+
+            $alreadyPaid = ReferralCommission::query()
+                ->where('beneficiary_user_id', $referrer->id)
+                ->where('source_user_id', $sourceUser->id)
+                ->where('referral_level', $level)
+                ->where('commission_source', 'signup')
+                ->exists();
+
+            if (! $alreadyPaid) {
+                $commission = ReferralCommission::create([
+                    'beneficiary_user_id' => $referrer->id,
+                    'source_user_id' => $sourceUser->id,
+                    'commission_source' => 'signup',
+                    'trade_id' => null,
+                    'referral_level' => $level,
+                    'trade_amount' => 0,
+                    'commission_rate' => 0,
+                    'commission_amount' => $bonus,
+                    'status' => 'credited',
+                    'credited_at' => now(),
+                ]);
+
+                $this->walletService->creditWithStats(
+                    $referrer,
+                    $bonus,
+                    'referral_commission',
+                    'total_commission',
+                    "Level {$level} referral bonus — {$sourceUser->name} joined",
+                    $commission,
+                );
+            }
+
+            $referrer = $referrer->referrer;
+            $level++;
+        }
+    }
+
     public function processOnTradeClose(Trade $trade): void
     {
         if ($trade->status !== 'closed') {
@@ -37,6 +93,7 @@ class ReferralService
                     ReferralCommission::create([
                         'beneficiary_user_id' => $referrer->id,
                         'source_user_id' => $sourceUser->id,
+                        'commission_source' => 'trade',
                         'trade_id' => $trade->id,
                         'referral_level' => $level,
                         'trade_amount' => $trade->amount,
@@ -57,6 +114,7 @@ class ReferralService
         $count = 0;
 
         ReferralCommission::where('status', 'pending')
+            ->where('commission_source', 'trade')
             ->with(['beneficiary', 'trade'])
             ->orderBy('id')
             ->chunkById(100, function ($commissions) use (&$count) {

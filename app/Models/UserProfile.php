@@ -4,9 +4,11 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class UserProfile extends Model
 {
@@ -23,6 +25,7 @@ class UserProfile extends Model
         'pincode',
         'country',
         'mobile_chart_data_source',
+        'mobile_chart_data_version',
         'bank_name',
         'account_number',
         'account_holder_name',
@@ -53,5 +56,16 @@ class UserProfile extends Model
     public function assetCharts(): HasMany
     {
         return $this->hasMany(UserProfileAssetChart::class);
+    }
+
+    protected function avatarUrl(): Attribute
+    {
+        return Attribute::get(function (?string $value) {
+            if ($this->avatar_path) {
+                return Storage::disk('public')->url($this->avatar_path);
+            }
+
+            return $value;
+        });
     }
 }

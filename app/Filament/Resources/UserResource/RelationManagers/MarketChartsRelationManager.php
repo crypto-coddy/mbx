@@ -5,6 +5,7 @@ namespace App\Filament\Resources\UserResource\RelationManagers;
 use App\Models\Asset;
 use App\Models\UserProfileAssetChart;
 use App\Services\ChartDataModeService;
+use App\Services\ChartDataVersionService;
 use App\Services\MarketChartService;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -24,8 +25,10 @@ class MarketChartsRelationManager extends RelationManager
         return $table
             ->description(function (): string {
                 $profile = $this->getOwnerRecord()->profile;
+                $effective = app(ChartDataVersionService::class)->effectiveDescriptionForProfile($profile);
+
                 if (app(ChartDataModeService::class)->isRealForProfile($profile)) {
-                    return 'This user is on Real market data — UP/DOWN controls apply only after you set Chart data source to Custom above.';
+                    return "This user is on {$effective} — UP/DOWN controls apply only after you set Chart data source to Custom above.";
                 }
 
                 return 'Control UP/DOWN chart direction for this user on the mobile Markets screen. Each market can be set independently.';

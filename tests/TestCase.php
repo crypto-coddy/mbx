@@ -10,8 +10,8 @@ use Spatie\Permission\Models\Role;
 abstract class TestCase extends BaseTestCase
 {
     /**
-     * Same MySQL database as backend + mobile API (.env DB_DATABASE=mbx).
-     * Rolls back test writes — never runs migrate:fresh.
+     * Tests use DB_DATABASE=mbx_test (see phpunit.xml), not your dev mbx database.
+     * Never add RefreshDatabase to tests here — it runs migrate:fresh and wipes tables.
      */
     use DatabaseTransactions;
 

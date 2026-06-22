@@ -23,7 +23,7 @@ class AssetResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
 
-    protected static ?string $navigationLabel = 'Markets';
+    protected static ?string $navigationLabel = 'Markets (v1)';
 
     protected static ?string $navigationGroup = 'Trading';
 

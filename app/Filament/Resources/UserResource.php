@@ -7,7 +7,9 @@ use App\Filament\Resources\UserResource\Pages;
 use App\Filament\Resources\UserResource\RelationManagers\MarketChartsRelationManager;
 use App\Filament\Support\AuditTableColumns;
 use App\Models\User;
+use App\Models\UserProfile;
 use App\Services\ChartDataModeService;
+use App\Services\ChartDataVersionService;
 use App\Services\WalletService;
 use Filament\Notifications\Notification;
 use Filament\Forms;
@@ -186,19 +188,80 @@ class UserResource extends Resource
                     $globalLabel = $global === ChartDataModeService::MODE_REAL ? 'Real market data' : 'Custom (admin controlled)';
 
                     return match ($state) {
-                        ChartDataModeService::MODE_REAL => 'This user always sees live prices and charts from external feeds. Per-market UP/DOWN below are ignored.',
-                        ChartDataModeService::MODE_CUSTOM => 'This user always sees admin-controlled charts. Use the Market charts section below to set UP/DOWN per asset.',
+                        ChartDataModeService::MODE_REAL => 'This user always sees live prices and charts from external feeds. Choose v1 or v2 below. Per-market UP/DOWN are ignored in Real mode.',
+                        ChartDataModeService::MODE_CUSTOM => 'This user always sees admin-controlled charts from Markets (v1). Use the Market charts section below to set UP/DOWN per asset.',
                         default => "Uses the platform default (currently: {$globalLabel}). Set Trading → Mobile charts to change the default for all users without an override.",
                     };
                 }),
+            Forms\Components\ToggleButtons::make('mobile_chart_data_version')
+                ->label('Real market feed version')
+                ->options([
+                    ChartDataVersionService::VERSION_PLATFORM_DEFAULT => 'Platform default',
+                    ChartDataVersionService::VERSION_V1 => 'v1 — Markets',
+                    ChartDataVersionService::VERSION_V2 => 'v2 — Markets Live',
+                ])
+                ->icons([
+                    ChartDataVersionService::VERSION_PLATFORM_DEFAULT => 'heroicon-o-adjustments-horizontal',
+                    ChartDataVersionService::VERSION_V1 => 'heroicon-o-chart-bar',
+                    ChartDataVersionService::VERSION_V2 => 'heroicon-o-signal',
+                ])
+                ->colors([
+                    ChartDataVersionService::VERSION_PLATFORM_DEFAULT => 'gray',
+                    ChartDataVersionService::VERSION_V1 => 'info',
+                    ChartDataVersionService::VERSION_V2 => 'success',
+                ])
+                ->inline()
+                ->default(ChartDataVersionService::VERSION_PLATFORM_DEFAULT)
+                ->formatStateUsing(fn (?string $state) => filled($state) ? $state : ChartDataVersionService::VERSION_PLATFORM_DEFAULT)
+                ->dehydrateStateUsing(fn (?string $state) => $state === ChartDataVersionService::VERSION_PLATFORM_DEFAULT ? null : $state)
+                ->live()
+                ->visible(function (Forms\Get $get): bool {
+                    $source = $get('mobile_chart_data_source') ?? ChartDataModeService::MODE_PLATFORM_DEFAULT;
+
+                    if ($source === ChartDataModeService::MODE_CUSTOM) {
+                        return false;
+                    }
+
+                    if ($source === ChartDataModeService::MODE_REAL) {
+                        return true;
+                    }
+
+                    return app(ChartDataModeService::class)->mode() === ChartDataModeService::MODE_REAL;
+                })
+                ->helperText(function (Forms\Get $get): string {
+                    $state = $get('mobile_chart_data_version') ?? ChartDataVersionService::VERSION_PLATFORM_DEFAULT;
+                    $global = app(ChartDataVersionService::class)->version();
+
+                    return match ($state) {
+                        ChartDataVersionService::VERSION_V2 => 'Twelve Data OHLC candles on mobile (Markets Live).',
+                        ChartDataVersionService::VERSION_V1 => 'Legacy real feed: Yahoo, Binance, metals (Markets v1).',
+                        default => 'Uses platform default (currently: '.app(ChartDataVersionService::class)->label($global).').',
+                    };
+                }),
+            Forms\Components\Placeholder::make('effective_chart_config')
+                ->label('Effective for this user')
+                ->content(function (?UserProfile $record, Forms\Get $get): string {
+                    $source = $get('mobile_chart_data_source') ?? ChartDataModeService::MODE_PLATFORM_DEFAULT;
+                    $version = $get('mobile_chart_data_version') ?? ChartDataVersionService::VERSION_PLATFORM_DEFAULT;
+
+                    return app(ChartDataVersionService::class)->effectiveDescriptionForFormState(
+                        $record,
+                        $source === ChartDataModeService::MODE_PLATFORM_DEFAULT ? null : $source,
+                        $version === ChartDataVersionService::VERSION_PLATFORM_DEFAULT ? null : $version,
+                    );
+                })
+                ->helperText('What this user actually sees on mobile after overrides above are applied.'),
             Forms\Components\Placeholder::make('platform_chart_default')
-                ->label('Current platform default')
+                ->label('Platform default (all users without overrides)')
                 ->content(function (): string {
                     $mode = app(ChartDataModeService::class)->mode();
+                    $version = app(ChartDataVersionService::class)->version();
 
-                    return $mode === ChartDataModeService::MODE_REAL
-                        ? 'Real market data'
-                        : 'Custom (admin controlled)';
+                    if ($mode === ChartDataModeService::MODE_CUSTOM) {
+                        return 'Custom (admin controlled) — Markets v1';
+                    }
+
+                    return 'Real market data — '.app(ChartDataVersionService::class)->label($version);
                 }),
         ];
     }
@@ -302,6 +365,20 @@ class UserResource extends Resource
                                 ChartDataModeService::MODE_CUSTOM => 'Custom (admin controlled)',
                                 default => 'Platform default',
                             };
+                        }),
+                    Infolists\Components\TextEntry::make('profile.mobile_chart_data_version')
+                        ->label('Real feed version override')
+                        ->formatStateUsing(function (?string $state) {
+                            return match ($state) {
+                                ChartDataVersionService::VERSION_V2 => 'v2 — Markets Live (Twelve Data)',
+                                ChartDataVersionService::VERSION_V1 => 'v1 — Markets',
+                                default => 'Platform default',
+                            };
+                        }),
+                    Infolists\Components\TextEntry::make('effective_chart_config')
+                        ->label('Effective on mobile')
+                        ->state(function (User $record): string {
+                            return app(ChartDataVersionService::class)->effectiveDescriptionForProfile($record->profile);
                         }),
                 ])
                 ->collapsible(),

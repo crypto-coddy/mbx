@@ -64,6 +64,12 @@ class ReferralController extends ApiController
             ->latest()
             ->paginate($request->integer('per_page', 20));
 
+        $commissions->getCollection()->transform(function (ReferralCommission $commission) {
+            $commission->setAttribute('level', $commission->referral_level);
+
+            return $commission;
+        });
+
         return $this->success($commissions);
     }
 

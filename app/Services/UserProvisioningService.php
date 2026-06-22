@@ -10,6 +10,7 @@ class UserProvisioningService
     public function __construct(
         protected WalletService $walletService,
         protected TradeSettingService $settings,
+        protected ReferralService $referrals,
     ) {}
 
     /**
@@ -31,6 +32,10 @@ class UserProvisioningService
         if ($grantReward) {
             $amount = $this->settings->get('signup_referral_reward', '200');
             $this->walletService->grantSignupReward($user, $amount, $referrer);
+        }
+
+        if ($referrer) {
+            $this->referrals->processOnSignup($user);
         }
 
         if ($markPhoneVerified && ! $user->phone_verified) {

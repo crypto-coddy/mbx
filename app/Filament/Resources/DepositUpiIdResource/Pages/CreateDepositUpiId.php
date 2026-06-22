@@ -8,4 +8,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateDepositUpiId extends CreateRecord
 {
     protected static string $resource = DepositUpiIdResource::class;
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

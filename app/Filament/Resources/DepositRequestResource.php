@@ -90,6 +90,11 @@ class DepositRequestResource extends Resource
                         ->label('Customer note')
                         ->disabled()
                         ->columnSpanFull(),
+                    Forms\Components\ViewField::make('payment_screenshot_path')
+                        ->label('Payment screenshot')
+                        ->view('filament.components.deposit-payment-screenshot')
+                        ->visible(fn (?DepositRequest $record) => filled($record?->payment_screenshot_path))
+                        ->columnSpanFull(),
                     Forms\Components\DateTimePicker::make('created_at')
                         ->label('Submitted at')
                         ->disabled(),
@@ -168,6 +173,12 @@ class DepositRequestResource extends Resource
                     Infolists\Components\TextEntry::make('note')
                         ->label('Customer note')
                         ->placeholder('—')
+                        ->columnSpanFull(),
+                    Infolists\Components\ImageEntry::make('payment_screenshot_path')
+                        ->label('Payment screenshot')
+                        ->disk('public')
+                        ->height(320)
+                        ->visible(fn (DepositRequest $record) => filled($record->payment_screenshot_path))
                         ->columnSpanFull(),
                     Infolists\Components\TextEntry::make('created_at')
                         ->label('Submitted at')

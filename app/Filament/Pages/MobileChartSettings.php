@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Services\ChartDataModeService;
+use App\Services\ChartDataVersionService;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -36,9 +37,11 @@ class MobileChartSettings extends Page implements HasForms
     public function mount(): void
     {
         $mode = app(ChartDataModeService::class)->mode();
+        $version = app(ChartDataVersionService::class)->version();
 
         $this->form->fill([
             'mobile_chart_data_source' => $mode,
+            'mobile_chart_data_version' => $version,
         ]);
     }
 
@@ -67,9 +70,34 @@ class MobileChartSettings extends Page implements HasForms
                             ->required()
                             ->live()
                             ->helperText(fn ($state) => $state === ChartDataModeService::MODE_REAL
-                                ? 'Live prices and intraday charts from metals API, Binance, and Yahoo Finance (similar to investing.com). Admin chart overrides are ignored on mobile.'
-                                : 'You control chart direction, prices, and per-user overrides from Markets and Users. Recommended for demos and guided trading.'),
+                                ? 'Live prices and intraday charts from external feeds. Choose v1 or v2 below when Real is selected.'
+                                : 'You control chart direction, prices, and per-user overrides from Markets (v1) and Users. Recommended for demos and guided trading.'),
                     ]),
+                Section::make('Real market feed version (v1 / v2)')
+                    ->description('Applies when Chart data source is Real. v1 = admin Markets (Yahoo/Binance/metals). v2 = admin Markets Live (Twelve Data OHLC candles).')
+                    ->schema([
+                        ToggleButtons::make('mobile_chart_data_version')
+                            ->label('Default real feed version')
+                            ->options([
+                                ChartDataVersionService::VERSION_V1 => 'v1 — Markets',
+                                ChartDataVersionService::VERSION_V2 => 'v2 — Markets Live',
+                            ])
+                            ->icons([
+                                ChartDataVersionService::VERSION_V1 => 'heroicon-o-chart-bar',
+                                ChartDataVersionService::VERSION_V2 => 'heroicon-o-signal',
+                            ])
+                            ->colors([
+                                ChartDataVersionService::VERSION_V1 => 'info',
+                                ChartDataVersionService::VERSION_V2 => 'success',
+                            ])
+                            ->inline()
+                            ->required()
+                            ->visible(fn ($get) => ($get('mobile_chart_data_source') ?? ChartDataModeService::MODE_REAL) === ChartDataModeService::MODE_REAL)
+                            ->helperText(fn ($state) => $state === ChartDataVersionService::VERSION_V2
+                                ? 'Mobile uses Twelve Data OHLC candles (same as Markets Live admin page).'
+                                : 'Mobile uses legacy real feeds from Markets (v1).'),
+                    ])
+                    ->visible(fn ($get) => ($get('mobile_chart_data_source') ?? ChartDataModeService::MODE_REAL) === ChartDataModeService::MODE_REAL),
             ])
             ->statePath('data');
     }
@@ -78,14 +106,16 @@ class MobileChartSettings extends Page implements HasForms
     {
         $state = $this->form->getState();
         $mode = $state['mobile_chart_data_source'] ?? ChartDataModeService::MODE_REAL;
+        $version = $state['mobile_chart_data_version'] ?? ChartDataVersionService::VERSION_V1;
 
         app(ChartDataModeService::class)->setMode($mode);
+        app(ChartDataVersionService::class)->setVersion($version);
 
         Notification::make()
             ->title('Mobile chart mode updated')
             ->body($mode === ChartDataModeService::MODE_REAL
-                ? 'Mobile users will see live market charts.'
-                : 'Mobile users will see admin-controlled charts.')
+                ? 'Mobile users on Real mode will use '.app(ChartDataVersionService::class)->label($version).'.'
+                : 'Mobile users will see admin-controlled charts (Markets v1).')
             ->success()
             ->send();
     }

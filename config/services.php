@@ -39,4 +39,8 @@ return [
         'key' => env('METALS_API_KEY'),
     ],
 
+    'twelve_data' => [
+        'key' => env('TWELVE_DATA_API_KEY'),
+    ],
+
 ];

@@ -13,7 +13,9 @@ class MarketChartService
 {
     public function __construct(
         protected ChartDataModeService $chartMode,
+        protected ChartDataVersionService $chartVersion,
         protected RealMarketChartService $realCharts,
+        protected TwelveDataService $twelveData,
     ) {}
     private const MAX_CHART_POINTS = 48;
 
@@ -270,16 +272,66 @@ class MarketChartService
             return;
         }
 
+        if ($this->chartVersion->isV2ForProfile($profile)) {
+            $this->twelveData->warmLiveData();
+
+            return;
+        }
+
         $this->realCharts->preloadLiveCharts($assets);
     }
 
     public function formatAssetForApi(Asset $asset, ?UserProfile $profile = null, ?array $profileTrends = null): array
     {
         if ($this->chartMode->isRealForProfile($profile)) {
+            if ($this->chartVersion->isV2ForProfile($profile)) {
+                return $this->formatAssetForApiRealV2($asset);
+            }
+
             return $this->formatAssetForApiReal($asset);
         }
 
         return $this->formatAssetForApiCustom($asset, $profile, $profileTrends);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function formatAssetForApiRealV2(Asset $asset): array
+    {
+        $bundle = $this->twelveData->mobileChartBundle($asset);
+        $chart = $bundle['chart'];
+        $trend = $bundle['trend'];
+        $summary = $this->chartSummary($chart, $trend);
+        $price = $bundle['live_price'];
+        $change = $bundle['price_change_24h'];
+        $message = $trend === 'up'
+            ? 'Live market moving up (Twelve Data v2)'
+            : 'Live market moving down (Twelve Data v2)';
+
+        return array_merge([
+            'id' => $asset->id,
+            'name' => $asset->name,
+            'symbol' => $asset->symbol,
+            'display_name' => $asset->display_name,
+            'live_price' => $price,
+            'admin_price' => null,
+            'admin_override_active' => false,
+            'current_price' => $price,
+            'price_change_24h' => $change,
+            'price_updated_at' => now()->toIso8601String(),
+            'chart_trend' => $trend,
+            'market_signal' => $trend === 'up' ? 'buy' : 'hold',
+            'market_message' => $message,
+            'trading_enabled' => (bool) $asset->trading_enabled,
+            'min_trade_amount' => (string) $asset->min_trade_amount,
+            'chart' => $chart,
+            'chart_candles' => $bundle['chart_candles'],
+            'chart_summary' => $summary,
+            'chart_scope' => 'real',
+            'chart_data_version' => ChartDataVersionService::VERSION_V2,
+            'chart_feed_source' => $bundle['source'],
+        ], $this->quoteFields($price, $chart, $asset));
     }
 
     /**
@@ -314,6 +366,7 @@ class MarketChartService
             'chart_candles' => $this->seriesToCandles($chart, 32),
             'chart_summary' => $summary,
             'chart_scope' => 'real',
+            'chart_data_version' => ChartDataVersionService::VERSION_V1,
         ], $this->quoteFields($price, $chart, $asset));
     }
 
@@ -363,6 +416,7 @@ class MarketChartService
             'chart_candles' => $this->seriesToCandles($chart, 32),
             'chart_summary' => $summary,
             'chart_scope' => $hasUserOverride ? 'user' : 'global',
+            'chart_data_version' => ChartDataVersionService::VERSION_V1,
         ], $this->quoteFields($price, $chart, $asset));
     }
 

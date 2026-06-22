@@ -1,0 +1,16 @@
+bootstrap/cache/routes-v7.php:        'uses' => 'O:55:"Laravel\\SerializableClosure\\UnsignedSerializableClosure":1:{s:12:"serializable";O:46:"Laravel\\SerializableClosure\\Serializers\\Native":5:{s:3:"use";a:3:{s:4:"disk";s:5:"local";s:6:"config";a:5:{s:6:"driver";s:5:"local";s:4:"root";s:52:"/Users/aaft/Downloads/cwt/mx/api/storage/app/private";s:5:"serve";b:1;s:5:"throw";b:0;s:6:"report";b:0;}s:12:"isProduction";b:0;}s:8:"function";s:323:"function (\\Illuminate\\Http\\Request $request, string $path) use ($disk, $config, $isProduction) {
+bootstrap/cache/routes-v7.php-                    return (new \\Illuminate\\Filesystem\\ServeFile(
+bootstrap/cache/routes-v7.php-                        $disk,
+bootstrap/cache/routes-v7.php-                        $config,
+bootstrap/cache/routes-v7.php-                        $isProduction
+bootstrap/cache/routes-v7.php-                    ))($request, $path);
+bootstrap/cache/routes-v7.php-                }";s:5:"scope";s:47:"Illuminate\\Filesystem\\FilesystemServiceProvider";s:4:"this";N;s:4:"self";s:32:"0000000000000b4d0000000000000000";}}',
+bootstrap/cache/routes-v7.php-        'as' => 'storage.local',
+bootstrap/cache/routes-v7.php-      ),
+bootstrap/cache/routes-v7.php-      'fallback' => false,
+bootstrap/cache/routes-v7.php-      'defaults' => 
+bootstrap/cache/routes-v7.php-      array (
+bootstrap/cache/routes-v7.php-      ),
+bootstrap/cache/routes-v7.php-      'wheres' => 
+bootstrap/cache/routes-v7.php-      array (
+bootstrap/cache/routes-v7.php-        'path' => '.*',

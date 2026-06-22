@@ -7,9 +7,9 @@
 
     RewriteEngine On
 
-    # Directory URLs (e.g. /quantx/) must hit the front controller — the
-    # !-d rule below skips real folders, so handle the app root explicitly.
-    RewriteRule ^$ index.php [L]
+    # Directory URLs (e.g. /quantx/) skip the !-d rewrite below on LiteSpeed.
+    # Redirect at the web-server layer instead of routing through Laravel.
+    RewriteRule ^$ admin/login [R=302,L]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

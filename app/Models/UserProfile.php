@@ -24,6 +24,7 @@ class UserProfile extends Model
         'state',
         'pincode',
         'country',
+        'phone_country_code',
         'mobile_chart_data_source',
         'mobile_chart_data_version',
         'bank_name',

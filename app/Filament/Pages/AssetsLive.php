@@ -270,7 +270,7 @@ class AssetsLive extends Page implements HasTable
                 ->label('Refresh live data')
                 ->icon('heroicon-o-arrow-path')
                 ->action(function (TwelveDataService $twelveData) {
-                    $twelveData->clearCaches();
+                    $twelveData->clearCaches(TwelveDataService::SCOPE_ADMIN);
                     $this->refreshLiveData($twelveData, force: true);
                     $this->refreshPreviewCandles($this->previewSymbol, $twelveData, force: true);
 
@@ -290,7 +290,10 @@ class AssetsLive extends Page implements HasTable
 
     protected function refreshLiveData(TwelveDataService $twelveData, bool $force = false): void
     {
-        $this->liveData = $twelveData->getLiveDataForAssets(force: $force);
+        $this->liveData = $twelveData->getLiveDataForAssets(
+            force: $force,
+            scope: TwelveDataService::SCOPE_ADMIN,
+        );
         $this->fetchedAt = collect($this->liveData)
             ->pluck('fetched_at')
             ->filter()
@@ -304,7 +307,12 @@ class AssetsLive extends Page implements HasTable
     protected function refreshPreviewCandles(string $symbol, TwelveDataService $twelveData, bool $force = false): void
     {
         $quoteRow = $this->liveData[$symbol] ?? [];
-        $series = $twelveData->refreshPreviewCandles($symbol, $force);
+        $series = $twelveData->refreshPreviewCandles(
+            $symbol,
+            $force,
+            allowFetch: true,
+            scope: TwelveDataService::SCOPE_ADMIN,
+        );
         $this->liveData[$symbol] = $twelveData->mergeSymbolPayload($symbol, $quoteRow, $series);
 
         if (($series['rate_limited'] ?? false) === true) {

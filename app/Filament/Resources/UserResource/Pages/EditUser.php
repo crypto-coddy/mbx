@@ -19,4 +19,9 @@ class EditUser extends EditRecord
 
         return $data;
     }
+
+    protected function afterSave(): void
+    {
+        $this->record->refresh()->load('profile');
+    }
 }

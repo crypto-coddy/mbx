@@ -21,10 +21,19 @@ class UserProvisioningService
         ?User $referrer = null,
         bool $grantReward = false,
         bool $markPhoneVerified = false,
+        ?string $country = null,
+        ?string $state = null,
+        ?string $city = null,
+        ?string $phoneCountryCode = null,
     ): void {
         $user->profile()->firstOrCreate(
             ['user_id' => $user->id],
-            ['country' => 'India'],
+            [
+                'country' => $country ?? 'India',
+                'state' => $state,
+                'city' => $city,
+                'phone_country_code' => $phoneCountryCode,
+            ],
         );
 
         $this->walletService->getOrCreateWallet($user);

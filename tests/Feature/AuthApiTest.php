@@ -17,22 +17,42 @@ class AuthApiTest extends TestCase
     {
         $register = $this->postJson('/api/v1/auth/register', [
             'name' => 'Test User',
-            'phone' => '9876543210',
+            'phone' => '919876543210',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
+            'phone_country_code' => '91',
         ]);
 
         $register->assertCreated()
             ->assertJsonPath('success', true)
             ->assertJsonStructure(['data' => ['user', 'token']]);
 
+        $this->assertDatabaseHas('user_profiles', [
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
+        ]);
+
         $login = $this->postJson('/api/v1/auth/login', [
-            'phone' => '9876543210',
+            'phone' => '919876543210',
             'password' => 'password123',
             'device_name' => 'test',
         ]);
 
         $login->assertOk()->assertJsonPath('success', true);
+
+        $this->postJson('/api/v1/auth/login', [
+            'phone' => '9876543210',
+            'password' => 'password123',
+        ])->assertUnauthorized();
+
+        $this->postJson('/api/v1/auth/login', [
+            'phone' => '919876543211',
+            'password' => 'password123',
+        ])->assertUnauthorized();
 
         $token = $login->json('data.token');
         $this->getJson('/api/v1/user/profile', ['Authorization' => "Bearer {$token}"])
@@ -62,6 +82,25 @@ class AuthApiTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('success', true);
+    }
+
+    public function test_user_can_login_with_demo_phone_that_already_includes_country_code(): void
+    {
+        $user = $this->ensureLoginTestUser();
+
+        $this->postJson('/api/v1/auth/login', [
+            'phone' => '9100000001',
+            'password' => 'password',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $user->id);
+
+        $this->postJson('/api/v1/auth/login', [
+            'phone' => '919100000001',
+            'password' => 'password',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.user.id', $user->id);
     }
 
     private function ensureLoginTestUser(): User

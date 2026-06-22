@@ -24,6 +24,7 @@ class MarketChartsRelationManager extends RelationManager
     {
         return $table
             ->description(function (): string {
+                $this->getOwnerRecord()->refresh()->load('profile');
                 $profile = $this->getOwnerRecord()->profile;
                 $effective = app(ChartDataVersionService::class)->effectiveDescriptionForProfile($profile);
 

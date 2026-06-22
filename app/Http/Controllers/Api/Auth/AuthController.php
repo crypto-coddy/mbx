@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ApiController;
 use App\Models\User;
 use App\Services\OtpService;
 use App\Services\UserProvisioningService;
+use App\Support\PhoneNumber;
 use App\Support\ReferralCodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,10 @@ class AuthController extends ApiController
             'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::defaults()],
+            'country' => ['required', 'string', 'max:100'],
+            'state' => ['required', 'string', 'max:100'],
+            'city' => ['required', 'string', 'max:100'],
+            'phone_country_code' => ['nullable', 'string', 'max:5', 'regex:/^\d{1,5}$/'],
             'referral_code' => ['nullable', 'string', 'exists:users,referral_code'],
             'device_name' => ['nullable', 'string', 'max:100'],
         ]);
@@ -37,7 +42,7 @@ class AuthController extends ApiController
 
         $user = User::create([
             'name' => $data['name'],
-            'phone' => $data['phone'],
+            'phone' => PhoneNumber::normalize($data['phone']),
             'email' => $data['email'] ?? null,
             'password' => $data['password'],
             'referral_code' => ReferralCodeGenerator::generate(),
@@ -45,7 +50,15 @@ class AuthController extends ApiController
             'status' => 'inactive',
         ]);
 
-        $this->provisioning->provision($user, $referrer, grantReward: true);
+        $this->provisioning->provision(
+            $user,
+            $referrer,
+            grantReward: true,
+            country: $data['country'],
+            state: $data['state'],
+            city: $data['city'],
+            phoneCountryCode: $data['phone_country_code'] ?? null,
+        );
 
         $this->otpService->send($user);
 
@@ -71,6 +84,10 @@ class AuthController extends ApiController
 
         if ($identifier === '') {
             return $this->error('Invalid credentials.', ['credentials' => ['Invalid phone/email or password.']], 401);
+        }
+
+        if (! filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+            $identifier = PhoneNumber::normalize($identifier);
         }
 
         $user = User::findForLogin($identifier);

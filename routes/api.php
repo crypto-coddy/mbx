@@ -58,6 +58,7 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::get('prices', [PriceController::class, 'index']);
+    Route::get('prices/{symbol}', [PriceController::class, 'show']);
     Route::get('prices/{symbol}/history', [PriceController::class, 'history']);
     Route::get('blog', [BlogPostController::class, 'index']);
     Route::get('blog/{slug}', [BlogPostController::class, 'show']);

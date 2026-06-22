@@ -192,7 +192,32 @@ class User extends Authenticatable implements FilamentUser
                 ->first();
         }
 
-        return static::query()->where('phone', $identifier)->first();
+        $normalized = \App\Support\PhoneNumber::normalize($identifier);
+        if ($normalized === '') {
+            return null;
+        }
+
+        foreach (\App\Support\PhoneNumber::loginCandidates($normalized) as $candidate) {
+            $user = static::query()->where('phone', $candidate)->first();
+            if ($user !== null) {
+                return $user;
+            }
+
+            $user = static::query()
+                ->leftJoin('user_profiles', 'user_profiles.user_id', '=', 'users.id')
+                ->whereRaw(
+                    "CONCAT(COALESCE(user_profiles.phone_country_code, ''), users.phone) = ?",
+                    [$candidate],
+                )
+                ->select('users.*')
+                ->first();
+
+            if ($user !== null) {
+                return $user;
+            }
+        }
+
+        return null;
     }
 
     public function canAccessPanel(Panel $panel): bool

@@ -116,6 +116,28 @@ class UserResource extends Resource
                         ->visibleOn('edit'),
                 ])
                 ->columns(2),
+            Forms\Components\Section::make('Location')
+                ->description('Collected at mobile registration.')
+                ->schema([
+                    Forms\Components\Group::make()
+                        ->relationship('profile')
+                        ->schema([
+                            Forms\Components\TextInput::make('country')
+                                ->maxLength(100),
+                            Forms\Components\TextInput::make('state')
+                                ->label('State / region')
+                                ->maxLength(100),
+                            Forms\Components\TextInput::make('city')
+                                ->maxLength(100),
+                            Forms\Components\TextInput::make('phone_country_code')
+                                ->label('Phone country code')
+                                ->prefix('+')
+                                ->maxLength(5)
+                                ->helperText('Dial code without + (e.g. 91 for India).'),
+                        ]),
+                ])
+                ->columns(2)
+                ->visibleOn('edit'),
             Forms\Components\Section::make('Status')
                 ->schema([
                     Forms\Components\Select::make('status')
@@ -314,6 +336,16 @@ class UserResource extends Resource
                     Infolists\Components\IconEntry::make('email_verified_flag')->label('Email verified')->boolean(),
                 ])
                 ->columns(3),
+            Infolists\Components\Section::make('Location')
+                ->schema([
+                    Infolists\Components\TextEntry::make('profile.country')->label('Country')->placeholder('—'),
+                    Infolists\Components\TextEntry::make('profile.state')->label('State / region')->placeholder('—'),
+                    Infolists\Components\TextEntry::make('profile.city')->label('City')->placeholder('—'),
+                    Infolists\Components\TextEntry::make('profile.phone_country_code')
+                        ->label('Phone country code')
+                        ->formatStateUsing(fn (?string $state) => filled($state) ? "+{$state}" : '—'),
+                ])
+                ->columns(4),
             Infolists\Components\Section::make('Status')
                 ->schema([
                     Infolists\Components\TextEntry::make('status')->badge(),

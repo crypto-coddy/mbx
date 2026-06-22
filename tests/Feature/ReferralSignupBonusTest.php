@@ -36,6 +36,9 @@ class ReferralSignupBonusTest extends TestCase
             'phone' => '7777700001',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
             'referral_code' => $john->referral_code,
         ])->assertCreated();
 
@@ -65,6 +68,10 @@ class ReferralSignupBonusTest extends TestCase
                 'phone' => $phone,
                 'password' => 'password123',
                 'password_confirmation' => 'password123',
+                'country' => 'India',
+                'state' => 'Maharashtra',
+                'city' => 'Mumbai',
+            'city' => 'Mumbai',
                 'referral_code' => $john->referral_code,
             ])->assertCreated();
         }
@@ -85,6 +92,9 @@ class ReferralSignupBonusTest extends TestCase
             'phone' => '7777700010',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
             'referral_code' => $john->referral_code,
         ])->assertCreated();
         $akash = User::where('phone', '7777700010')->firstOrFail();
@@ -94,6 +104,9 @@ class ReferralSignupBonusTest extends TestCase
             'phone' => '7777700011',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
             'referral_code' => $akash->referral_code,
         ])->assertCreated();
         $sital = User::where('phone', '7777700011')->firstOrFail();
@@ -103,6 +116,9 @@ class ReferralSignupBonusTest extends TestCase
             'phone' => '7777700012',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
             'referral_code' => $sital->referral_code,
         ])->assertCreated();
         $aman = User::where('phone', '7777700012')->firstOrFail();
@@ -150,6 +166,10 @@ class ReferralSignupBonusTest extends TestCase
                 'phone' => $phone,
                 'password' => 'password123',
                 'password_confirmation' => 'password123',
+                'country' => 'India',
+                'state' => 'Maharashtra',
+                'city' => 'Mumbai',
+            'city' => 'Mumbai',
                 'referral_code' => $referralCode,
             ])->assertCreated();
 

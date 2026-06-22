@@ -51,6 +51,9 @@ class SignupRewardTest extends TestCase
             'phone' => '8888888881',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
             'referral_code' => $referrer->referral_code,
         ]);
 
@@ -72,6 +75,9 @@ class SignupRewardTest extends TestCase
             'phone' => '8888888882',
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'country' => 'India',
+            'state' => 'Maharashtra',
+            'city' => 'Mumbai',
         ]);
 
         $response->assertCreated();

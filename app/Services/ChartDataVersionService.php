@@ -45,6 +45,36 @@ class ChartDataVersionService
         return $this->versionForProfile($profile) === self::VERSION_V2;
     }
 
+    /** Whether mobile chart config comes from this profile or platform defaults. */
+    public function configScopeForProfile(?UserProfile $profile): string
+    {
+        if (! $profile) {
+            return 'platform';
+        }
+
+        if (filled($profile->mobile_chart_data_source) || filled($profile->mobile_chart_data_version)) {
+            return 'user';
+        }
+
+        return 'platform';
+    }
+
+    /**
+     * @return array{mode: string, version: string, scope: string, source_override: ?string, version_override: ?string}
+     */
+    public function mobileMetaForProfile(?UserProfile $profile): array
+    {
+        $modeService = app(ChartDataModeService::class);
+
+        return [
+            'mode' => $modeService->modeForProfile($profile),
+            'version' => $this->versionForProfile($profile),
+            'scope' => $this->configScopeForProfile($profile),
+            'source_override' => $profile?->mobile_chart_data_source,
+            'version_override' => $profile?->mobile_chart_data_version,
+        ];
+    }
+
     public function setVersion(string $version): void
     {
         $this->settings->set(

@@ -28,6 +28,7 @@ class MarketCatalogService
         ?string $category = null,
         ?string $search = null,
         bool $favoritesOnly = false,
+        bool $lite = false,
     ): Collection {
         $this->maybeEnsureDefaultCatalog();
 
@@ -69,10 +70,10 @@ class MarketCatalogService
             $assets = Asset::orderBy('sort_order')->get();
         }
 
-        $this->charts->preloadRealChartsForProfile($profile, $assets);
+        $this->charts->preloadRealChartsForProfile($profile, $assets, $lite);
 
-        return $assets->map(function (Asset $asset) use ($profile, $profileTrends, $favoriteIds) {
-            $payload = $this->charts->formatAssetForApi($asset, $profile, $profileTrends);
+        return $assets->map(function (Asset $asset) use ($profile, $profileTrends, $favoriteIds, $lite) {
+            $payload = $this->charts->formatAssetForApi($asset, $profile, $profileTrends, $lite);
             $payload['category'] = $asset->category ?? 'commodities';
             $payload['icon_url'] = $asset->icon_url;
             $payload['currency'] = $asset->currency;

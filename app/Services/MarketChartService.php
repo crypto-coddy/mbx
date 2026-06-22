@@ -11,6 +11,8 @@ use Illuminate\Support\Collection;
 
 class MarketChartService
 {
+    protected bool $allowTwelveDataSeriesFetch = true;
+
     public function __construct(
         protected ChartDataModeService $chartMode,
         protected ChartDataVersionService $chartVersion,
@@ -266,25 +268,41 @@ class MarketChartService
     /**
      * @param  Collection<int, Asset>|iterable<int, Asset>  $assets
      */
-    public function preloadRealChartsForProfile(?UserProfile $profile, Collection|iterable $assets): void
+    public function preloadRealChartsForProfile(?UserProfile $profile, Collection|iterable $assets, bool $lite = false): void
     {
+        $this->allowTwelveDataSeriesFetch = true;
+
         if (! $this->chartMode->isRealForProfile($profile)) {
             return;
         }
 
         if ($this->chartVersion->isV2ForProfile($profile)) {
-            $this->twelveData->warmLiveData();
-            // List endpoint: batch quotes only — time_series is cached or quote-fallback.
-            $this->twelveData->setAllowSeriesFetch(false);
+            $this->twelveData->warmLiveData(scope: TwelveDataService::SCOPE_MOBILE);
+            if ($lite) {
+                return;
+            }
+            $this->allowTwelveDataSeriesFetch = false;
 
+            return;
+        }
+
+        if ($lite) {
             return;
         }
 
         $this->realCharts->preloadLiveCharts($assets);
     }
 
-    public function formatAssetForApi(Asset $asset, ?UserProfile $profile = null, ?array $profileTrends = null): array
-    {
+    public function formatAssetForApi(
+        Asset $asset,
+        ?UserProfile $profile = null,
+        ?array $profileTrends = null,
+        bool $lite = false,
+    ): array {
+        if ($lite) {
+            return $this->formatAssetForApiList($asset, $profile, $profileTrends);
+        }
+
         if ($this->chartMode->isRealForProfile($profile)) {
             if ($this->chartVersion->isV2ForProfile($profile)) {
                 return $this->formatAssetForApiRealV2($asset);
@@ -297,11 +315,197 @@ class MarketChartService
     }
 
     /**
+     * Fast market list payload — quotes only, no per-asset time_series fetches.
+     *
+     * @return array<string, mixed>
+     */
+    protected function formatAssetForApiList(Asset $asset, ?UserProfile $profile = null, ?array $profileTrends = null): array
+    {
+        if ($this->chartMode->isRealForProfile($profile)) {
+            if ($this->chartVersion->isV2ForProfile($profile)) {
+                return $this->formatAssetForApiRealV2List($asset);
+            }
+
+            return $this->formatAssetForApiRealList($asset);
+        }
+
+        return $this->formatAssetForApiCustomList($asset, $profile, $profileTrends);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function formatAssetForApiRealV2List(Asset $asset): array
+    {
+        $row = $this->twelveData->warmLiveData(scope: TwelveDataService::SCOPE_MOBILE)[$asset->symbol] ?? [];
+        $price = number_format((float) ($row['live_price'] ?? $asset->live_price), 8, '.', '');
+        $change = number_format((float) ($row['percent_change'] ?? $asset->price_change_24h), 2, '.', '');
+        $trend = (float) $change >= 0 ? 'up' : 'down';
+        $chart = $this->liteChartFromQuoteRow($price, $row, $trend);
+
+        if (($row['source'] ?? '') === 'database' || $this->isFlatChartSeries($chart)) {
+            $stored = $this->realCharts->getChartForAsset($asset, 12);
+            if (count($stored) >= 2) {
+                $chart = array_slice($stored, -12);
+                $trend = $this->realCharts->resolveTrendFromChart($chart);
+            }
+        }
+
+        $summary = $this->chartSummary($chart, $trend);
+
+        return array_merge([
+            'id' => $asset->id,
+            'name' => $asset->name,
+            'symbol' => $asset->symbol,
+            'display_name' => $asset->display_name,
+            'live_price' => $price,
+            'admin_price' => null,
+            'admin_override_active' => false,
+            'current_price' => $price,
+            'price_change_24h' => $change,
+            'price_updated_at' => $row['fetched_at'] ?? now()->toIso8601String(),
+            'chart_trend' => $trend,
+            'market_signal' => $trend === 'up' ? 'buy' : 'hold',
+            'market_message' => $trend === 'up'
+                ? 'Live market moving up (Twelve Data v2)'
+                : 'Live market moving down (Twelve Data v2)',
+            'trading_enabled' => (bool) $asset->trading_enabled,
+            'min_trade_amount' => (string) $asset->min_trade_amount,
+            'chart' => $chart,
+            'chart_candles' => $this->seriesToCandles($chart, 16),
+            'chart_summary' => $summary,
+            'chart_scope' => 'real',
+            'chart_data_version' => ChartDataVersionService::VERSION_V2,
+            'chart_feed_source' => ($row['source'] ?? '') === 'database' ? 'database' : 'twelve_data_quote',
+        ], $this->quoteFields($price, $chart, $asset));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function formatAssetForApiRealList(Asset $asset): array
+    {
+        $price = (string) $asset->live_price;
+        $change = $this->realCharts->formatPriceChange($asset);
+        $trend = $asset->chart_trend ?? 'up';
+        $chart = $this->liteChartFromQuoteRow($price, [
+            'open' => $price,
+            'high' => $price,
+            'low' => $price,
+            'close' => $price,
+        ], $trend);
+
+        return array_merge([
+            'id' => $asset->id,
+            'name' => $asset->name,
+            'symbol' => $asset->symbol,
+            'display_name' => $asset->display_name,
+            'live_price' => $price,
+            'admin_price' => $asset->admin_price !== null ? (string) $asset->admin_price : null,
+            'admin_override_active' => false,
+            'current_price' => $price,
+            'price_change_24h' => $change,
+            'price_updated_at' => $asset->price_updated_at?->toIso8601String(),
+            'chart_trend' => $trend,
+            'market_signal' => $trend === 'up' ? 'buy' : 'hold',
+            'market_message' => $this->realCharts->marketMessage($trend, $this->chartSummary($chart, $trend)),
+            'trading_enabled' => (bool) $asset->trading_enabled,
+            'min_trade_amount' => (string) $asset->min_trade_amount,
+            'chart' => $chart,
+            'chart_candles' => $this->seriesToCandles($chart, 16),
+            'chart_summary' => $this->chartSummary($chart, $trend),
+            'chart_scope' => 'real',
+            'chart_data_version' => ChartDataVersionService::VERSION_V1,
+        ], $this->quoteFields($price, $chart, $asset));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function formatAssetForApiCustomList(Asset $asset, ?UserProfile $profile = null, ?array $profileTrends = null): array
+    {
+        $trend = $this->resolveTrend($asset, $profile, $profileTrends);
+        $price = (string) ($asset->admin_override_active && $asset->admin_price !== null
+            ? $asset->admin_price
+            : $asset->live_price);
+        $chart = $this->liteChartFromQuoteRow($price, [
+            'open' => $price,
+            'high' => $price,
+            'low' => $price,
+            'close' => $price,
+        ], $trend);
+
+        return array_merge([
+            'id' => $asset->id,
+            'name' => $asset->name,
+            'symbol' => $asset->symbol,
+            'display_name' => $asset->display_name,
+            'live_price' => (string) $asset->live_price,
+            'admin_price' => $asset->admin_price !== null ? (string) $asset->admin_price : null,
+            'admin_override_active' => (bool) $asset->admin_override_active,
+            'current_price' => $price,
+            'price_change_24h' => (string) $asset->price_change_24h,
+            'price_updated_at' => $asset->price_updated_at?->toIso8601String(),
+            'chart_trend' => $trend,
+            'market_signal' => $trend === 'up' ? 'buy' : 'hold',
+            'market_message' => 'Custom chart mode',
+            'trading_enabled' => (bool) $asset->trading_enabled,
+            'min_trade_amount' => (string) $asset->min_trade_amount,
+            'chart' => $chart,
+            'chart_candles' => $this->seriesToCandles($chart, 16),
+            'chart_summary' => $this->chartSummary($chart, $trend),
+            'chart_scope' => 'global',
+            'chart_data_version' => ChartDataVersionService::VERSION_V1,
+        ], $this->quoteFields($price, $chart, $asset));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<array{price: string, recorded_at: string, trend: string}>
+     */
+    protected function liteChartFromQuoteRow(string $price, array $row, string $trend): array
+    {
+        $candles = $this->twelveData->syntheticCandlesFromQuote([
+            'open' => $row['open'] ?? null,
+            'high' => $row['high'] ?? null,
+            'low' => $row['low'] ?? null,
+            'close' => $row['close'] ?? $price,
+        ], 12);
+
+        if ($candles === []) {
+            return [
+                [
+                    'price' => $price,
+                    'recorded_at' => now()->subMinute()->toIso8601String(),
+                    'trend' => $trend,
+                ],
+                [
+                    'price' => $price,
+                    'recorded_at' => now()->toIso8601String(),
+                    'trend' => $trend,
+                ],
+            ];
+        }
+
+        return array_map(function (array $candle) use ($trend) {
+            return [
+                'price' => number_format((float) $candle['close'], 8, '.', ''),
+                'recorded_at' => date('c', (int) $candle['time']),
+                'trend' => $trend,
+            ];
+        }, $candles);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function formatAssetForApiRealV2(Asset $asset): array
     {
-        $bundle = $this->twelveData->mobileChartBundle($asset);
+        $bundle = $this->applyV2ChartFallback($asset, $this->twelveData->mobileChartBundle(
+            $asset,
+            allowSeriesFetch: $this->allowTwelveDataSeriesFetch,
+            scope: TwelveDataService::SCOPE_MOBILE,
+        ));
         $chart = $bundle['chart'];
         $trend = $bundle['trend'];
         $summary = $this->chartSummary($chart, $trend);
@@ -659,6 +863,59 @@ class MarketChartService
 
             return $normalized;
         }, $series));
+    }
+
+    /**
+     * When Twelve Data OHLC is unavailable (rate limit / credits), reuse stored real history.
+     *
+     * @param  array{chart: array, chart_candles: array, trend: string, source: string, live_price: string, price_change_24h: string}  $bundle
+     * @return array{chart: array, chart_candles: array, trend: string, source: string, live_price: string, price_change_24h: string}
+     */
+    protected function applyV2ChartFallback(Asset $asset, array $bundle): array
+    {
+        if (($bundle['source'] ?? '') === 'twelve_data_time_series') {
+            return $bundle;
+        }
+
+        $candles = $bundle['chart_candles'] ?? [];
+        if (! $this->isFlatChartSeries($candles) && ($bundle['source'] ?? '') !== 'quote_fallback') {
+            return $bundle;
+        }
+
+        $fallbackChart = $this->realCharts->getChartForAsset($asset, 40);
+        if (count($fallbackChart) < 10) {
+            return $bundle;
+        }
+
+        $trend = $this->realCharts->resolveTrendFromChart($fallbackChart);
+
+        $bundle['chart'] = $fallbackChart;
+        $bundle['chart_candles'] = $this->seriesToCandles($fallbackChart, 32);
+        $bundle['trend'] = $trend;
+
+        return $bundle;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $points
+     */
+    protected function isFlatChartSeries(array $points): bool
+    {
+        if (count($points) < 2) {
+            return true;
+        }
+
+        $values = [];
+
+        foreach ($points as $point) {
+            foreach (['close', 'price', 'open', 'high', 'low'] as $key) {
+                if (isset($point[$key]) && is_numeric($point[$key])) {
+                    $values[] = round((float) $point[$key], 2);
+                }
+            }
+        }
+
+        return count(array_unique($values)) < 2;
     }
 
     /**

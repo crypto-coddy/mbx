@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Asset;
+use App\Jobs\WarmTwelveDataMobileCacheJob;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -12,18 +13,21 @@ class TwelveDataService
 {
     public const CACHE_TTL_SECONDS = 60;
 
+    /** Mobile polls every 5s — refresh Twelve Data quotes at least this often. */
+    public const MOBILE_QUOTE_MAX_AGE_SECONDS = 12;
+
+    public const MOBILE_SERIES_MAX_AGE_SECONDS = 45;
+
     public const SERIES_CACHE_TTL_SECONDS = 300;
 
-    public const QUOTE_CACHE_KEY = 'twelve_data:quotes:v2';
+    public const SCOPE_MOBILE = 'mobile';
 
-    public const RATE_LIMIT_CACHE_KEY = 'twelve_data:rate_limited_until';
+    public const SCOPE_ADMIN = 'admin';
 
-    /** @var array<string, array<string, mixed>>|null */
+    /** @var array<string, array<string, array<string, mixed>>>|null */
     protected ?array $requestLiveData = null;
 
-    protected bool $allowSeriesFetch = true;
-
-    /** @var array<string, string> Internal symbol → Twelve Data symbol */
+    /** Internal symbol → Twelve Data symbol */
     public const SYMBOL_MAP = [
         'XAU' => 'XAU/USD',
         'XAG' => 'XAG/USD',
@@ -44,40 +48,96 @@ class TwelveDataService
      *
      * @return array<string, array<string, mixed>>
      */
-    public function getLiveDataForAssets(?Collection $assets = null, bool $force = false): array
-    {
+    public function getLiveDataForAssets(
+        ?Collection $assets = null,
+        bool $force = false,
+        string $scope = self::SCOPE_MOBILE,
+    ): array {
         $assets ??= Asset::query()->orderBy('sort_order')->get();
+        $cacheKey = $this->quoteCacheKey($scope);
+        $staleKey = $cacheKey.':stale';
+        $maxAge = $this->quoteMaxAgeSeconds($scope);
 
-        if ($force) {
-            Cache::forget(self::QUOTE_CACHE_KEY);
+        if (! $force) {
+            $cached = Cache::get($cacheKey);
+            $cachedAt = (int) Cache::get($this->quoteCacheAgeKey($scope), 0);
+
+            if (is_array($cached) && $cached !== [] && (time() - $cachedAt) < $maxAge) {
+                return $this->mapQuotesToAssets($assets, $cached);
+            }
+        } else {
+            Cache::forget($cacheKey);
+            Cache::forget($this->quoteCacheAgeKey($scope));
         }
 
-        $quotes = Cache::remember(self::QUOTE_CACHE_KEY, self::CACHE_TTL_SECONDS, function () use ($assets) {
-            return $this->fetchBatchQuotes($assets);
-        });
+        if (
+            ! $force
+            && $scope === self::SCOPE_MOBILE
+            && ! Cache::add($cacheKey.':fetch_lock', 1, 15)
+        ) {
+            $fallback = Cache::get($cacheKey) ?? Cache::get($staleKey);
+            if (is_array($fallback) && $fallback !== []) {
+                return $this->mapQuotesToAssets($assets, $fallback);
+            }
 
-        return $this->mapQuotesToAssets($assets, $quotes);
+            return $this->mapDbFallbackToAssets($assets);
+        }
+
+        $fresh = $this->fetchBatchQuotes($assets, $scope);
+
+        if (($fresh['_rate_limited'] ?? false) === true) {
+            $fallback = Cache::get($staleKey) ?? Cache::get($cacheKey);
+            if (is_array($fallback) && $fallback !== []) {
+                return $this->mapQuotesToAssets($assets, $fallback);
+            }
+
+            if ($scope === self::SCOPE_MOBILE) {
+                return $this->mapDbFallbackToAssets($assets);
+            }
+        }
+
+        unset($fresh['_rate_limited']);
+
+        if ($fresh !== []) {
+            Cache::put($cacheKey, $fresh, self::CACHE_TTL_SECONDS);
+            Cache::put($this->quoteCacheAgeKey($scope), time(), self::CACHE_TTL_SECONDS);
+            Cache::put($staleKey, $fresh, self::CACHE_TTL_SECONDS * 10);
+        }
+
+        return $this->mapQuotesToAssets($assets, $fresh);
     }
 
     /**
-     * One time_series call for the chart preview symbol.
+     * One time_series call for chart candles.
      *
      * @return array{values: list<array<string, mixed>>, status: string, message?: string, source: string}
      */
-    public function refreshPreviewCandles(string $internalSymbol, bool $force = false): array
-    {
-        $cacheKey = 'twelve_data:series:'.Str::slug($internalSymbol).':30';
+    public function refreshPreviewCandles(
+        string $internalSymbol,
+        bool $force = false,
+        bool $allowFetch = true,
+        string $scope = self::SCOPE_MOBILE,
+    ): array {
+        $cacheKey = $this->seriesCacheKey($scope, $internalSymbol, 30);
 
         if ($force) {
             Cache::forget($cacheKey);
+            Cache::forget($cacheKey.':at');
         }
 
         $cached = Cache::get($cacheKey);
-        if (is_array($cached) && ($cached['status'] ?? '') === 'ok') {
+        $cachedAt = (int) Cache::get($cacheKey.':at', 0);
+        $seriesMaxAge = $this->seriesMaxAgeSeconds($scope);
+
+        if (
+            is_array($cached)
+            && ($cached['status'] ?? '') === 'ok'
+            && ($scope !== self::SCOPE_MOBILE || (time() - $cachedAt) < $seriesMaxAge)
+        ) {
             return $cached;
         }
 
-        if ($this->isRateLimited() || ! $this->allowSeriesFetch) {
+        if ($this->isRateLimited($scope) || ! $allowFetch) {
             return is_array($cached) ? $cached : [
                 'status' => 'error',
                 'message' => 'Preview candles unavailable (cached only).',
@@ -85,10 +145,11 @@ class TwelveDataService
             ];
         }
 
-        $payload = $this->fetchTimeSeries($internalSymbol, 30);
+        $payload = $this->fetchTimeSeries($internalSymbol, 30, $scope);
 
         if (($payload['status'] ?? 'error') === 'ok') {
             Cache::put($cacheKey, $payload, self::SERIES_CACHE_TTL_SECONDS);
+            Cache::put($cacheKey.':at', time(), self::SERIES_CACHE_TTL_SECONDS);
 
             return $payload;
         }
@@ -102,33 +163,27 @@ class TwelveDataService
         return $payload;
     }
 
-    public function setAllowSeriesFetch(bool $allow): self
+    public function isRateLimited(string $scope = self::SCOPE_MOBILE): bool
     {
-        $this->allowSeriesFetch = $allow;
-
-        return $this;
+        return Cache::has($this->rateLimitCacheKey($scope));
     }
 
-    public function isRateLimited(): bool
+    public function clearCaches(?string $scope = null): void
     {
-        return Cache::has(self::RATE_LIMIT_CACHE_KEY);
-    }
+        $scopes = $scope === null ? [self::SCOPE_MOBILE, self::SCOPE_ADMIN] : [$scope];
 
-    protected function markRateLimited(int $seconds = 60): void
-    {
-        Cache::put(self::RATE_LIMIT_CACHE_KEY, true, $seconds);
-    }
+        foreach ($scopes as $targetScope) {
+            Cache::forget($this->quoteCacheKey($targetScope));
+            Cache::forget($this->rateLimitCacheKey($targetScope));
 
-    public function clearCaches(): void
-    {
-        Cache::forget(self::QUOTE_CACHE_KEY);
-        Cache::forget(self::RATE_LIMIT_CACHE_KEY);
-        $this->requestLiveData = null;
-        $this->allowSeriesFetch = true;
+            foreach (array_keys(self::SYMBOL_MAP) as $symbol) {
+                Cache::forget($this->seriesCacheKey($targetScope, $symbol, 30));
+            }
 
-        foreach (array_keys(self::SYMBOL_MAP) as $symbol) {
-            Cache::forget('twelve_data:series:'.Str::slug($symbol).':30');
+            Cache::forget($this->quoteCacheKey($targetScope).':stale');
         }
+
+        $this->requestLiveData = null;
     }
 
     /**
@@ -136,15 +191,13 @@ class TwelveDataService
      *
      * @return array<string, array<string, mixed>>
      */
-    public function warmLiveData(bool $force = false): array
+    public function warmLiveData(bool $force = false, string $scope = self::SCOPE_MOBILE): array
     {
-        if ($this->requestLiveData !== null && ! $force) {
-            return $this->requestLiveData;
+        if (! isset($this->requestLiveData[$scope]) || $force) {
+            $this->requestLiveData[$scope] = $this->getLiveDataForAssets(force: $force, scope: $scope);
         }
 
-        $this->requestLiveData = $this->getLiveDataForAssets(force: $force);
-
-        return $this->requestLiveData;
+        return $this->requestLiveData[$scope];
     }
 
     /**
@@ -159,11 +212,14 @@ class TwelveDataService
      *     source: string
      * }
      */
-    public function mobileChartBundle(Asset $asset): array
-    {
+    public function mobileChartBundle(
+        Asset $asset,
+        bool $allowSeriesFetch = true,
+        string $scope = self::SCOPE_MOBILE,
+    ): array {
         $symbol = $asset->symbol;
-        $row = $this->warmLiveData()[$symbol] ?? [];
-        $series = $this->refreshPreviewCandles($symbol);
+        $row = $this->warmLiveData(scope: $scope)[$symbol] ?? [];
+        $series = $this->refreshPreviewCandles($symbol, allowFetch: $allowSeriesFetch, scope: $scope);
         $merged = $this->mergeSymbolPayload($symbol, $row, $series);
 
         $normalized = $this->normalizeCandlesForChart($merged['candles'] ?? []);
@@ -203,6 +259,7 @@ class TwelveDataService
                 'high' => number_format((float) $candle['high'], 8, '.', ''),
                 'low' => number_format((float) $candle['low'], 8, '.', ''),
                 'close' => $close,
+                'price' => $close,
                 'recorded_at' => $recordedAt,
             ];
         }
@@ -232,9 +289,13 @@ class TwelveDataService
     /**
      * @return array<string, mixed>|null
      */
-    public function getTimeSeries(string $internalSymbol, int $outputSize = 30, bool $force = false): ?array
-    {
-        return $this->refreshPreviewCandles($internalSymbol, $force);
+    public function getTimeSeries(
+        string $internalSymbol,
+        int $outputSize = 30,
+        bool $force = false,
+        string $scope = self::SCOPE_MOBILE,
+    ): ?array {
+        return $this->refreshPreviewCandles($internalSymbol, $force, allowFetch: true, scope: $scope);
     }
 
     public function twelveDataSymbol(string $internalSymbol): ?string
@@ -339,6 +400,94 @@ class TwelveDataService
         ]);
     }
 
+    protected function quoteCacheKey(string $scope): string
+    {
+        return 'twelve_data:quotes:'.$scope.':v2';
+    }
+
+    protected function quoteCacheAgeKey(string $scope): string
+    {
+        return $this->quoteCacheKey($scope).':at';
+    }
+
+    protected function quoteMaxAgeSeconds(string $scope): int
+    {
+        return $scope === self::SCOPE_MOBILE
+            ? self::MOBILE_QUOTE_MAX_AGE_SECONDS
+            : self::CACHE_TTL_SECONDS;
+    }
+
+    protected function seriesMaxAgeSeconds(string $scope): int
+    {
+        return $scope === self::SCOPE_MOBILE
+            ? self::MOBILE_SERIES_MAX_AGE_SECONDS
+            : self::SERIES_CACHE_TTL_SECONDS;
+    }
+
+    protected function seriesCacheKey(string $scope, string $internalSymbol, int $outputSize): string
+    {
+        return 'twelve_data:series:'.$scope.':'.Str::slug($internalSymbol).':'.$outputSize;
+    }
+
+    protected function rateLimitCacheKey(string $scope): string
+    {
+        return 'twelve_data:rate_limited:'.$scope;
+    }
+
+    protected function queueMobileQuoteRefresh(string $scope): void
+    {
+        if ($scope !== self::SCOPE_MOBILE || app()->environment('testing')) {
+            return;
+        }
+
+        if (! Cache::add('twelve_data:mobile:refresh_lock', 1, 15)) {
+            return;
+        }
+
+        WarmTwelveDataMobileCacheJob::dispatch()->afterResponse();
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    protected function mapDbFallbackToAssets(Collection $assets): array
+    {
+        return $this->mapQuotesToAssets($assets, $this->buildDbQuotes($assets));
+    }
+
+    /**
+     * @param  Collection<int, Asset>  $assets
+     * @return array<string, array<string, mixed>>
+     */
+    protected function buildDbQuotes(Collection $assets): array
+    {
+        $quotes = [];
+
+        foreach ($assets as $asset) {
+            $tdSymbol = self::SYMBOL_MAP[$asset->symbol] ?? null;
+            if ($tdSymbol === null) {
+                continue;
+            }
+
+            $price = (string) $asset->live_price;
+            $quotes[$tdSymbol] = [
+                'symbol' => $tdSymbol,
+                'close' => $price,
+                'open' => $price,
+                'high' => $price,
+                'low' => $price,
+                'percent_change' => (string) $asset->price_change_24h,
+            ];
+        }
+
+        return $quotes;
+    }
+
+    protected function markRateLimited(string $scope, int $seconds = 60): void
+    {
+        Cache::put($this->rateLimitCacheKey($scope), true, $seconds);
+    }
+
     /**
      * @param  array<string, array<string, mixed>>  $quotes
      * @return array<string, array<string, mixed>>
@@ -382,7 +531,7 @@ class TwelveDataService
     /**
      * @return array<string, mixed>
      */
-    protected function fetchTimeSeries(string $internalSymbol, int $outputSize = 30): array
+    protected function fetchTimeSeries(string $internalSymbol, int $outputSize = 30, string $scope = self::SCOPE_MOBILE): array
     {
         $tdSymbol = self::SYMBOL_MAP[$internalSymbol] ?? null;
 
@@ -399,7 +548,7 @@ class TwelveDataService
             'interval' => '1min',
             'outputsize' => $outputSize,
             'timezone' => 'UTC',
-        ]);
+        ], $scope);
 
         if (($response['status'] ?? 'error') !== 'ok') {
             return [
@@ -418,7 +567,7 @@ class TwelveDataService
      * @param  Collection<int, Asset>  $assets
      * @return array<string, array<string, mixed>>
      */
-    protected function fetchBatchQuotes(Collection $assets): array
+    protected function fetchBatchQuotes(Collection $assets, string $scope = self::SCOPE_MOBILE): array
     {
         $symbols = $assets
             ->map(fn (Asset $asset) => self::SYMBOL_MAP[$asset->symbol] ?? null)
@@ -433,10 +582,12 @@ class TwelveDataService
 
         $quotes = [];
         $chunks = array_chunk($symbols, 8);
+        $rateLimited = false;
 
         foreach ($chunks as $index => $chunk) {
             if ($index > 0) {
-                if ($this->isRateLimited()) {
+                if ($this->isRateLimited($scope)) {
+                    $rateLimited = true;
                     break;
                 }
 
@@ -445,10 +596,11 @@ class TwelveDataService
 
             $response = $this->request('quote', [
                 'symbol' => implode(',', $chunk),
-            ]);
+            ], $scope);
 
             if (($response['rate_limited'] ?? false) === true) {
                 $quotes['_error'] = $response['message'] ?? 'Twelve Data rate limit reached.';
+                $rateLimited = true;
 
                 break;
             }
@@ -468,6 +620,10 @@ class TwelveDataService
                     $quotes[$symbol] = $payload;
                 }
             }
+        }
+
+        if ($rateLimited) {
+            $quotes['_rate_limited'] = true;
         }
 
         return $quotes;
@@ -492,7 +648,7 @@ class TwelveDataService
      * @param  array<string, mixed>  $query
      * @return array<string, mixed>
      */
-    protected function request(string $endpoint, array $query = []): array
+    protected function request(string $endpoint, array $query = [], string $scope = self::SCOPE_MOBILE): array
     {
         $apiKey = config('services.twelve_data.key');
 
@@ -503,7 +659,7 @@ class TwelveDataService
             ];
         }
 
-        if ($this->isRateLimited()) {
+        if ($this->isRateLimited($scope)) {
             return [
                 'status' => 'error',
                 'message' => 'Twelve Data rate limit cooldown active.',
@@ -523,12 +679,17 @@ class TwelveDataService
             'message' => 'Invalid Twelve Data response.',
         ];
 
-        if (($payload['code'] ?? null) === 429 || str_contains(strtolower((string) ($payload['message'] ?? '')), 'run out of api credits')) {
-            $this->markRateLimited();
+        $message = strtolower((string) ($payload['message'] ?? ''));
+
+        if (($payload['code'] ?? null) === 429 || str_contains($message, 'run out of api credits')) {
+            $cooldown = str_contains($message, 'for the day') ? 3600 : 60;
+            $this->markRateLimited($scope, $cooldown);
 
             return [
                 'status' => 'error',
-                'message' => 'Twelve Data rate limit (8/min on Basic). Wait 1 minute or upgrade plan.',
+                'message' => str_contains($message, 'for the day')
+                    ? 'Twelve Data daily API credits exhausted. Using cached/stored chart data until reset.'
+                    : 'Twelve Data rate limit (8/min on Basic). Wait 1 minute or upgrade plan.',
                 'rate_limited' => true,
             ];
         }

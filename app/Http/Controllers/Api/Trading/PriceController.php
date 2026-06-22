@@ -43,12 +43,13 @@ class PriceController extends ApiController
         $favoritesOnly = (bool) ($data['favorites_only'] ?? false);
         $chartMode = $this->chartMode->modeForProfile($profile);
         $chartVersion = $this->chartVersion->versionForProfile($profile);
+        $chartMeta = $this->chartVersion->mobileMetaForProfile($profile);
 
         // Throttled custom-mode ticks so mobile polls see movement without overshooting.
         $this->maybeAdvanceStaleQuotes($profile, $chartMode);
 
-        // Align cache with mobile poll interval; avoid hammering Twelve Data on every tick.
-        $timeBucket = (int) floor(time() / 15);
+        // Match mobile poll interval (5s) so each poll can see fresh quotes.
+        $timeBucket = (int) floor(time() / 5);
         $cacheKey = 'api.prices.'.($user?->id ?? 'guest').'.'.$timeBucket.'.'.md5(json_encode([
             'category' => $category,
             'search' => $search,
@@ -57,11 +58,12 @@ class PriceController extends ApiController
             'chart_version' => $chartVersion,
         ]));
 
-        $assets = Cache::remember($cacheKey, now()->addSeconds(15), fn () => $this->catalog->listForUser(
+        $assets = Cache::remember($cacheKey, now()->addSeconds(5), fn () => $this->catalog->listForUser(
             $user,
             $category,
             $search,
             $favoritesOnly,
+            lite: true,
         )->values());
 
         // `data` is a flat array so older mobile clients (FlatList) keep working.
@@ -72,6 +74,38 @@ class PriceController extends ApiController
                 'categories' => MarketCatalogService::CATEGORIES,
                 'chart_data_mode' => $chartMode,
                 'chart_data_version' => $chartVersion,
+                'chart_config_scope' => $chartMeta['scope'],
+                'chart_source_override' => $chartMeta['source_override'],
+                'chart_version_override' => $chartMeta['version_override'],
+            ],
+            'message' => 'OK',
+        ]);
+    }
+
+    public function show(Request $request, string $symbol): JsonResponse
+    {
+        $asset = Asset::query()
+            ->where('symbol', strtoupper($symbol))
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        $user = $this->resolveUser($request);
+        if ($user) {
+            $user->load('profile');
+        }
+        $profile = $user?->profile;
+        $profileTrends = $this->charts->chartTrendsForProfile($profile);
+        $chartMeta = $this->chartVersion->mobileMetaForProfile($profile);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->charts->formatAssetForApi($asset, $profile, $profileTrends, lite: false),
+            'meta' => [
+                'chart_data_mode' => $chartMeta['mode'],
+                'chart_data_version' => $chartMeta['version'],
+                'chart_config_scope' => $chartMeta['scope'],
+                'chart_source_override' => $chartMeta['source_override'],
+                'chart_version_override' => $chartMeta['version_override'],
             ],
             'message' => 'OK',
         ]);

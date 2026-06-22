@@ -266,12 +266,6 @@ class AssetsLive extends Page implements HasTable
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('toggleTradeChartLive')
-                ->label(fn () => $this->tradeChartLive ? 'Stop trade chart' : 'Start trade chart')
-                ->icon(fn () => $this->tradeChartLive ? 'heroicon-o-pause-circle' : 'heroicon-o-play-circle')
-                ->color(fn () => $this->tradeChartLive ? 'warning' : 'success')
-                ->visible(fn () => static::canAdmin('manage_markets'))
-                ->action(fn () => $this->toggleTradeChartLive()),
             Action::make('refreshLive')
                 ->label('Refresh live data')
                 ->icon('heroicon-o-arrow-path')

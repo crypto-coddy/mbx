@@ -64,8 +64,8 @@
     id="assets-live-chart-preview"
     class="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900"
 >
-    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
-        <div>
+    <div class="assets-live-chart-header">
+        <div class="assets-live-header-copy">
             <p class="text-xs font-semibold uppercase tracking-wide text-primary-600">Mobile trade chart preview</p>
             <h3 class="mt-1 text-lg font-semibold text-gray-950 dark:text-white">
                 {{ $preview['symbol'] }} — {{ $preview['name'] }}
@@ -78,7 +78,7 @@
             </p>
         </div>
 
-        <div class="flex flex-wrap items-end gap-3">
+        <div class="assets-live-header-controls">
             <label class="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-gray-300">
                 Preview asset
                 <select
@@ -112,11 +112,34 @@
     </div>
 
     @if (! empty($candles))
-        <div class="grid gap-0 border-b border-gray-100 px-5 py-3 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-300 sm:grid-cols-4">
-            <div><span class="font-medium text-gray-900 dark:text-white">O</span> ${{ number_format((float) ($preview['session_open'] ?? 0), 2) }}</div>
-            <div><span class="font-medium text-success-600">H</span> ${{ number_format((float) ($preview['session_high'] ?? 0), 2) }}</div>
-            <div><span class="font-medium text-danger-600">L</span> ${{ number_format((float) ($preview['session_low'] ?? 0), 2) }}</div>
-            <div><span class="font-medium text-gray-900 dark:text-white">C</span> ${{ number_format((float) ($preview['session_close'] ?? 0), 2) }}</div>
+        @php
+            $sessionOpen = (float) ($preview['session_open'] ?? 0);
+            $sessionClose = (float) ($preview['session_close'] ?? 0);
+            $closeBullish = $sessionClose >= $sessionOpen;
+        @endphp
+        <div class="border-b border-gray-100 assets-live-ohlc-row dark:border-gray-800">
+            <div class="assets-live-ohlc-pills">
+                <span class="assets-live-ohlc-pill assets-live-ohlc-pill--open">
+                    <span class="assets-live-ohlc-label">O</span>
+                    <span class="assets-live-ohlc-value">${{ number_format($sessionOpen, 2) }}</span>
+                </span>
+                <span class="assets-live-ohlc-pill assets-live-ohlc-pill--high">
+                    <span class="assets-live-ohlc-label">H</span>
+                    <span class="assets-live-ohlc-value">${{ number_format((float) ($preview['session_high'] ?? 0), 2) }}</span>
+                </span>
+                <span class="assets-live-ohlc-pill assets-live-ohlc-pill--low">
+                    <span class="assets-live-ohlc-label">L</span>
+                    <span class="assets-live-ohlc-value">${{ number_format((float) ($preview['session_low'] ?? 0), 2) }}</span>
+                </span>
+                <span @class([
+                    'assets-live-ohlc-pill',
+                    'assets-live-ohlc-pill--close-up' => $closeBullish,
+                    'assets-live-ohlc-pill--close-down' => ! $closeBullish,
+                ])>
+                    <span class="assets-live-ohlc-label">C</span>
+                    <span class="assets-live-ohlc-value">${{ number_format($sessionClose, 2) }}</span>
+                </span>
+            </div>
         </div>
     @endif
 
@@ -141,7 +164,7 @@
         @endif
     </div>
 
-    <div class="border-t border-gray-100 px-5 py-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+    <div class="assets-live-chart-footer">
         Same OHLC feed as the mobile trade screen can use later. {{ $preview['candles_count'] }} candles shown.
     </div>
 </div>

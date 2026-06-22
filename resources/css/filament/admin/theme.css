@@ -133,3 +133,141 @@
 .fi-simple-main {
     @apply rounded-2xl shadow-2xl ring-1 ring-white/10;
 }
+
+/* —— Assets Live chart preview (custom blade; explicit spacing) —— */
+#assets-live-chart-preview .assets-live-chart-header,
+#assets-live-chart-preview .assets-live-ohlc-row,
+#assets-live-chart-preview .assets-live-chart-footer {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+}
+
+#assets-live-chart-preview .assets-live-chart-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid rgb(243 244 246);
+}
+
+.dark #assets-live-chart-preview .assets-live-chart-header {
+    border-bottom-color: rgb(31 41 55);
+}
+
+#assets-live-chart-preview .assets-live-header-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+#assets-live-chart-preview .assets-live-header-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+}
+
+#assets-live-chart-preview .assets-live-ohlc-row {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgb(243 244 246);
+}
+
+.dark #assets-live-chart-preview .assets-live-ohlc-row {
+    border-bottom-color: rgb(31 41 55);
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pill--open {
+    background: rgb(241 245 249);
+    color: rgb(15 23 42);
+}
+
+.dark #assets-live-chart-preview .assets-live-ohlc-pill--open {
+    background: rgb(30 41 59 / 0.8);
+    color: rgb(248 250 252);
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pill--high {
+    background: rgb(240 253 244);
+    color: rgb(21 128 61);
+}
+
+.dark #assets-live-chart-preview .assets-live-ohlc-pill--high {
+    background: rgb(5 46 22 / 0.4);
+    color: rgb(134 239 172);
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pill--low {
+    background: rgb(254 242 242);
+    color: rgb(185 28 28);
+}
+
+.dark #assets-live-chart-preview .assets-live-ohlc-pill--low {
+    background: rgb(69 10 10 / 0.4);
+    color: rgb(252 165 165);
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pill--close-up {
+    background: rgb(240 253 244);
+    color: rgb(21 128 61);
+}
+
+.dark #assets-live-chart-preview .assets-live-ohlc-pill--close-up {
+    background: rgb(5 46 22 / 0.4);
+    color: rgb(134 239 172);
+}
+
+#assets-live-chart-preview .assets-live-ohlc-pill--close-down {
+    background: rgb(254 242 242);
+    color: rgb(185 28 28);
+}
+
+.dark #assets-live-chart-preview .assets-live-ohlc-pill--close-down {
+    background: rgb(69 10 10 / 0.4);
+    color: rgb(252 165 165);
+}
+
+#assets-live-chart-preview .assets-live-ohlc-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#assets-live-chart-preview .assets-live-ohlc-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+#assets-live-chart-preview .assets-live-chart-footer {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: rgb(107 114 128);
+    border-top: 1px solid rgb(243 244 246);
+}
+
+.dark #assets-live-chart-preview .assets-live-chart-footer {
+    color: rgb(156 163 175);
+    border-top-color: rgb(31 41 55);
+}

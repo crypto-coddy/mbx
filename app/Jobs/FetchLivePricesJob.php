@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Events\PriceUpdated;
 use App\Models\Asset;
 use App\Models\PriceHistory;
 use App\Services\ChartDataModeService;
@@ -57,8 +56,6 @@ class FetchLivePricesJob
                 'interval' => '1m',
                 'recorded_at' => now(),
             ]);
-
-            event(new PriceUpdated($asset->fresh(), $newPrice, 'live_api'));
         }
     }
 

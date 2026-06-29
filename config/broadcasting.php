@@ -18,6 +18,12 @@ return [
     'default' => env('BROADCAST_CONNECTION', 'null'),
 
     /*
+    | Set true only when Reverb (or another broadcaster) is running and reachable.
+    | On shared hosting without WebSockets, keep false to avoid queue broadcast failures.
+    */
+    'enabled' => env('BROADCAST_ENABLED', false),
+
+    /*
     |--------------------------------------------------------------------------
     | Broadcast Connections
     |--------------------------------------------------------------------------

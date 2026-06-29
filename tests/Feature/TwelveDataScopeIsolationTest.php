@@ -16,7 +16,10 @@ class TwelveDataScopeIsolationTest extends TestCase
 {
     public function test_admin_cache_clear_does_not_wipe_mobile_quote_cache(): void
     {
-        config(['services.twelve_data.key' => 'test-key']);
+        config([
+            'services.twelve_data.key' => 'test-key',
+            'twelve_data.mobile_http_cache_only' => false,
+        ]);
 
         Http::fake([
             'api.twelvedata.com/quote*' => Http::response([
@@ -39,7 +42,9 @@ class TwelveDataScopeIsolationTest extends TestCase
         ]);
 
         $twelveData = app(TwelveDataService::class);
+        $twelveData->enableNetworkFetch();
         $twelveData->getLiveDataForAssets(force: true, scope: TwelveDataService::SCOPE_MOBILE);
+        $twelveData->enableNetworkFetch();
         $twelveData->getLiveDataForAssets(force: true, scope: TwelveDataService::SCOPE_ADMIN);
 
         $this->assertTrue(Cache::has('twelve_data:quotes:mobile:v2'));

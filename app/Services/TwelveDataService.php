@@ -13,9 +13,10 @@ class TwelveDataService
 {
     public const CACHE_TTL_SECONDS = 60;
 
-    /** Mobile polls every 5s — refresh Twelve Data quotes at least this often. */
+    /** @deprecated Use config('twelve_data.mobile_quote_max_age_seconds') */
     public const MOBILE_QUOTE_MAX_AGE_SECONDS = 12;
 
+    /** @deprecated Use config('twelve_data.mobile_series_max_age_seconds') */
     public const MOBILE_SERIES_MAX_AGE_SECONDS = 45;
 
     public const SERIES_CACHE_TTL_SECONDS = 300;
@@ -24,8 +25,21 @@ class TwelveDataService
 
     public const SCOPE_ADMIN = 'admin';
 
+    /** Only jobs/schedulers set this true before outbound Twelve Data calls. */
+    protected bool $networkFetchEnabled = false;
+
     /** @var array<string, array<string, array<string, mixed>>>|null */
     protected ?array $requestLiveData = null;
+
+    public function enableNetworkFetch(): void
+    {
+        $this->networkFetchEnabled = true;
+    }
+
+    public function networkFetchEnabled(): bool
+    {
+        return $this->networkFetchEnabled;
+    }
 
     /** Internal symbol → Twelve Data symbol */
     public const SYMBOL_MAP = [
@@ -57,6 +71,22 @@ class TwelveDataService
         $cacheKey = $this->quoteCacheKey($scope);
         $staleKey = $cacheKey.':stale';
         $maxAge = $this->quoteMaxAgeSeconds($scope);
+
+        if ($this->shouldServeCacheOnly($scope, $force)) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && $cached !== []) {
+                return $this->mapQuotesToAssets($assets, $cached);
+            }
+
+            $fallback = Cache::get($staleKey);
+            if (is_array($fallback) && $fallback !== []) {
+                return $this->mapQuotesToAssets($assets, $fallback);
+            }
+
+            $this->queueMobileQuoteRefresh($scope);
+
+            return $this->mapDbFallbackToAssets($assets);
+        }
 
         if (! $force) {
             $cached = Cache::get($cacheKey);
@@ -99,9 +129,10 @@ class TwelveDataService
         unset($fresh['_rate_limited']);
 
         if ($fresh !== []) {
-            Cache::put($cacheKey, $fresh, self::CACHE_TTL_SECONDS);
-            Cache::put($this->quoteCacheAgeKey($scope), time(), self::CACHE_TTL_SECONDS);
-            Cache::put($staleKey, $fresh, self::CACHE_TTL_SECONDS * 10);
+            $ttl = (int) config('twelve_data.quote_cache_ttl_seconds', self::CACHE_TTL_SECONDS);
+            Cache::put($cacheKey, $fresh, $ttl);
+            Cache::put($this->quoteCacheAgeKey($scope), time(), $ttl);
+            Cache::put($staleKey, $fresh, $ttl * 10);
         }
 
         return $this->mapQuotesToAssets($assets, $fresh);
@@ -135,6 +166,14 @@ class TwelveDataService
             && ($scope !== self::SCOPE_MOBILE || (time() - $cachedAt) < $seriesMaxAge)
         ) {
             return $cached;
+        }
+
+        if ($this->shouldServeCacheOnly($scope, false) || ($this->isRateLimited($scope) && ! $this->networkFetchEnabled)) {
+            return is_array($cached) ? $cached : [
+                'status' => 'error',
+                'message' => 'Preview candles unavailable (cached only).',
+                'values' => [],
+            ];
         }
 
         if ($this->isRateLimited($scope) || ! $allowFetch) {
@@ -412,16 +451,31 @@ class TwelveDataService
 
     protected function quoteMaxAgeSeconds(string $scope): int
     {
-        return $scope === self::SCOPE_MOBILE
-            ? self::MOBILE_QUOTE_MAX_AGE_SECONDS
-            : self::CACHE_TTL_SECONDS;
+        if ($scope === self::SCOPE_MOBILE) {
+            return (int) config('twelve_data.mobile_quote_max_age_seconds', self::MOBILE_QUOTE_MAX_AGE_SECONDS);
+        }
+
+        return (int) config('twelve_data.quote_cache_ttl_seconds', self::CACHE_TTL_SECONDS);
     }
 
     protected function seriesMaxAgeSeconds(string $scope): int
     {
+        if ($scope === self::SCOPE_MOBILE) {
+            return (int) config('twelve_data.mobile_series_max_age_seconds', self::MOBILE_SERIES_MAX_AGE_SECONDS);
+        }
+
+        return (int) config('twelve_data.series_cache_ttl_seconds', self::SERIES_CACHE_TTL_SECONDS);
+    }
+
+    protected function shouldServeCacheOnly(string $scope, bool $force): bool
+    {
+        if ($force && $this->networkFetchEnabled) {
+            return false;
+        }
+
         return $scope === self::SCOPE_MOBILE
-            ? self::MOBILE_SERIES_MAX_AGE_SECONDS
-            : self::SERIES_CACHE_TTL_SECONDS;
+            && config('twelve_data.mobile_http_cache_only', true)
+            && ! $this->networkFetchEnabled;
     }
 
     protected function seriesCacheKey(string $scope, string $internalSymbol, int $outputSize): string
@@ -548,7 +602,7 @@ class TwelveDataService
             'interval' => '1min',
             'outputsize' => $outputSize,
             'timezone' => 'UTC',
-        ], $scope);
+        ], $scope, (int) config('twelve_data.credit_cost.time_series', 1));
 
         if (($response['status'] ?? 'error') !== 'ok') {
             return [
@@ -581,8 +635,11 @@ class TwelveDataService
         }
 
         $quotes = [];
-        $chunks = array_chunk($symbols, 8);
+        $plan = app(TwelveDataCreditBudget::class)->planConfig();
+        $chunkSize = max(1, (int) ($plan['quote_chunk_size'] ?? 8));
+        $chunks = array_chunk($symbols, $chunkSize);
         $rateLimited = false;
+        $quoteCost = (int) config('twelve_data.credit_cost.quote', 1);
 
         foreach ($chunks as $index => $chunk) {
             if ($index > 0) {
@@ -591,12 +648,21 @@ class TwelveDataService
                     break;
                 }
 
-                sleep(8);
+                $delay = (int) ($plan['chunk_delay_seconds'] ?? 0);
+                if ($delay > 0) {
+                    sleep($delay);
+                }
+            }
+
+            if (! app(TwelveDataCreditBudget::class)->canSpend($quoteCost, $scope)) {
+                $rateLimited = true;
+                $quotes['_rate_limited'] = true;
+                break;
             }
 
             $response = $this->request('quote', [
                 'symbol' => implode(',', $chunk),
-            ], $scope);
+            ], $scope, $quoteCost);
 
             if (($response['rate_limited'] ?? false) === true) {
                 $quotes['_error'] = $response['message'] ?? 'Twelve Data rate limit reached.';
@@ -648,7 +714,7 @@ class TwelveDataService
      * @param  array<string, mixed>  $query
      * @return array<string, mixed>
      */
-    protected function request(string $endpoint, array $query = [], string $scope = self::SCOPE_MOBILE): array
+    protected function request(string $endpoint, array $query = [], string $scope = self::SCOPE_MOBILE, int $creditCost = 1): array
     {
         $apiKey = config('services.twelve_data.key');
 
@@ -659,10 +725,27 @@ class TwelveDataService
             ];
         }
 
+        if ($this->shouldServeCacheOnly($scope, false)) {
+            return [
+                'status' => 'error',
+                'message' => 'Twelve Data fetch blocked — mobile cache-only mode.',
+                'rate_limited' => true,
+            ];
+        }
+
         if ($this->isRateLimited($scope)) {
             return [
                 'status' => 'error',
                 'message' => 'Twelve Data rate limit cooldown active.',
+                'rate_limited' => true,
+            ];
+        }
+
+        $budget = app(TwelveDataCreditBudget::class);
+        if ($creditCost > 0 && ! $budget->spend($creditCost, $scope)) {
+            return [
+                'status' => 'error',
+                'message' => 'Twelve Data minute credit budget exhausted for '.$budget->plan().' plan.',
                 'rate_limited' => true,
             ];
         }

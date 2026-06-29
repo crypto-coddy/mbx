@@ -6,6 +6,7 @@ use App\Events\PriceUpdated;
 use App\Models\Asset;
 use App\Models\PriceHistory;
 use App\Services\ChartDataModeService;
+use App\Services\ChartDataVersionService;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -14,8 +15,12 @@ class FetchLivePricesJob
 {
     use Queueable;
 
-    public function handle(ChartDataModeService $chartMode): void
+    public function handle(ChartDataModeService $chartMode, ChartDataVersionService $chartVersion): void
     {
+        if ($chartVersion->version() === ChartDataVersionService::VERSION_V2 && config('services.twelve_data.key')) {
+            return;
+        }
+
         $assets = Asset::where('is_active', true)->get();
         $useRealCharts = $chartMode->isReal();
 

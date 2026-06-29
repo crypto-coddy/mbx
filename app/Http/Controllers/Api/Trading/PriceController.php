@@ -96,10 +96,14 @@ class PriceController extends ApiController
         $profile = $user?->profile;
         $profileTrends = $this->charts->chartTrendsForProfile($profile);
         $chartMeta = $this->chartVersion->mobileMetaForProfile($profile);
+        $payload = $this->charts->formatAssetForApi($asset, $profile, $profileTrends, lite: false);
+        $payload['is_favorited'] = $user
+            ? $this->catalog->isFavorited($user, $asset->id)
+            : false;
 
         return response()->json([
             'success' => true,
-            'data' => $this->charts->formatAssetForApi($asset, $profile, $profileTrends, lite: false),
+            'data' => $payload,
             'meta' => [
                 'chart_data_mode' => $chartMeta['mode'],
                 'chart_data_version' => $chartMeta['version'],

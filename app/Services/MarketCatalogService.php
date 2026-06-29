@@ -105,6 +105,13 @@ class MarketCatalogService
         return true;
     }
 
+    public function isFavorited(User $user, int $assetId): bool
+    {
+        return UserAssetFavorite::where('user_id', $user->id)
+            ->where('asset_id', $assetId)
+            ->exists();
+    }
+
     /** Keep catalog in sync — adds missing instruments after migrate or partial seed. */
     public function ensureDefaultCatalog(): void
     {
